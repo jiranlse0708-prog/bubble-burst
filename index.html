@@ -579,22 +579,39 @@ shareBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
 shareBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); audio(); shareGameLink(); });
 
 /* =========================================================================
-   RANKING — 로컬 저장(localStorage), 클리어 타임이 빠를수록 상위, TOP 10.
-   기록: { name(한글), time(초), score }. 클리어(WIN) 화면에서만 등록 가능하고
-   닉네임은 한글만·중복 불가. ※ 현재는 기기 한정 저장 — 전체 공유로 바꾸려면
-   getRanks/saveRank/rankNameTaken 를 서버 API 호출로 교체하면 된다.
+   RANKING — Supabase 전체 공유 랭킹. 클리어 타임이 빠를수록 상위, TOP 10.
+   기록: { name, time_sec, score }. 클리어(WIN) 화면에서만 등록, 닉네임 중복 불가
+   (테이블 name UNIQUE 제약으로 서버에서 강제 → 중복 insert는 409로 거부).
+   anon 키는 공개용 클라이언트 키라 임베드해도 안전(RLS로 select/insert만 허용).
    ========================================================================= */
-const RANK_KEY = 'bb_ranks_v2', RANK_MAX = 10;
-const NAME_RE = /^[가-힣A-Za-z0-9]+$/;   // 한글·영문·숫자 허용 (한글/영문 무관)
-function getRanks() { try { return JSON.parse(localStorage.getItem(RANK_KEY) || '[]'); } catch (_) { return []; } }
-function rankNameTaken(name) { return getRanks().some((r) => r.name === name); }
-function saveRank(rec) {
-  const list = getRanks();
-  list.push(rec);
-  list.sort((a, b) => a.time - b.time);   // 클리어 타임 빠를수록 상위
-  const top = list.slice(0, RANK_MAX);
-  localStorage.setItem(RANK_KEY, JSON.stringify(top));
-  return top.indexOf(rec);                // 내 기록의 순위(없으면 -1)
+const RANK_MAX = 10;
+const NAME_RE = /^[가-힣A-Za-z0-9]+$/;   // 한글·영문·숫자 허용
+const SUPA_URL = 'https://uixjgxmxhkigorigwxlh.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVpeGpneG14aGtpZ29yaWd3eGxoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0MDI5MDYsImV4cCI6MjA5Mjk3ODkwNn0.YyUN406Q8scinowm2rfx6kUn7CyEEJvtZ4AGcH2xRYY';
+const RANK_TABLE = 'bubble_burst_ranking';
+const SUPA_HEADERS = { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY };
+
+async function fetchRanks() {
+  try {
+    const res = await fetch(
+      SUPA_URL + '/rest/v1/' + RANK_TABLE + '?select=name,time_sec,score&order=time_sec.asc&limit=' + RANK_MAX,
+      { headers: SUPA_HEADERS }
+    );
+    if (!res.ok) return null;
+    const rows = await res.json();
+    return rows.map((r) => ({ name: r.name, time: r.time_sec, score: r.score }));
+  } catch (_) { return null; }
+}
+async function insertRank(rec) {
+  // 반환값: { ok, status } — 409면 닉네임 중복(UNIQUE 위반)
+  try {
+    const res = await fetch(SUPA_URL + '/rest/v1/' + RANK_TABLE, {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }, SUPA_HEADERS),
+      body: JSON.stringify({ name: rec.name, time_sec: rec.time, score: rec.score }),
+    });
+    return { ok: res.ok, status: res.status };
+  } catch (_) { return { ok: false, status: 0 }; }
 }
 function escapeHtml(s) { return String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
 
@@ -605,9 +622,13 @@ const nameInput = document.getElementById('nameInput');
 const saveBtn   = document.getElementById('saveBtn');
 const rankMsg   = document.getElementById('rankMsg');
 let rankOpen = false;
+let lastSavedName = null;   // 내 기록 하이라이트용
 
-function buildRankTable(highlight) {
-  const list = getRanks();
+function buildRankTable(list, highlightName) {
+  if (!list) {
+    rankBody.innerHTML = '<div class="rank-empty">랭킹을 불러오지 못했어요.<br/>잠시 후 다시 시도해 주세요.</div>';
+    return;
+  }
   if (!list.length) {
     rankBody.innerHTML = '<div class="rank-empty">아직 기록이 없어요.<br/>첫 주자가 되어보세요!</div>';
     return;
@@ -615,7 +636,7 @@ function buildRankTable(highlight) {
   let rows = '';
   list.forEach((r, i) => {
     const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1);
-    rows += '<tr class="' + (i === highlight ? 'me' : '') + '">' +
+    rows += '<tr class="' + (r.name === highlightName ? 'me' : '') + '">' +
       '<td class="num">' + medal + '</td>' +
       '<td>' + escapeHtml(r.name) + '</td>' +
       '<td class="rt">' + fmtTime(r.time) + '</td>' +
@@ -626,36 +647,50 @@ function buildRankTable(highlight) {
     '<th class="num">#</th><th>이름</th><th class="rt">TIME</th><th class="rt">SCORE</th>' +
     '</tr></thead><tbody>' + rows + '</tbody></table>';
 }
+async function refreshRankTable(highlightName) {
+  rankBody.innerHTML = '<div class="rank-empty">불러오는 중…</div>';
+  const list = await fetchRanks();
+  buildRankTable(list, highlightName);
+}
 
-function openRanking(highlight) {
+function openRanking() {
   const canRegister = (game.state === 'WIN' && !game.saved);   // 클리어 + 미등록일 때만 입력칸
   rankEntry.classList.toggle('show', canRegister);
   rankMsg.textContent = '';
   if (canRegister) nameInput.value = '';
-  buildRankTable(highlight == null ? -1 : highlight);
   rankModal.classList.add('show');
   rankOpen = true;
   if (canRegister) setTimeout(() => { try { nameInput.focus(); } catch (_) {} }, 30);
+  refreshRankTable(lastSavedName);
 }
 function closeRanking() { rankModal.classList.remove('show'); rankOpen = false; }
 
-function commitScore() {
+async function commitScore() {
   const name = (nameInput.value || '').trim();
   if (!NAME_RE.test(name)) { rankMsg.textContent = '닉네임을 입력하세요 (한글·영문·숫자, 1~6자)'; return; }
-  if (rankNameTaken(name)) { rankMsg.textContent = '이미 등록된 닉네임입니다'; return; }
-  const idx = saveRank({ name, time: game.clearTime, score: game.score });
-  game.saved = true;
-  localStorage.setItem('bb_lastname', name);
-  rankEntry.classList.remove('show');
-  rankMsg.textContent = '';
-  buildRankTable(idx);
+  rankMsg.textContent = '저장 중…';
+  saveBtn.disabled = true;
+  const res = await insertRank({ name, time: game.clearTime, score: game.score });
+  saveBtn.disabled = false;
+  if (res.ok) {
+    game.saved = true;
+    lastSavedName = name;
+    localStorage.setItem('bb_lastname', name);
+    rankEntry.classList.remove('show');
+    rankMsg.textContent = '';
+    await refreshRankTable(name);
+  } else if (res.status === 409) {
+    rankMsg.textContent = '이미 등록된 닉네임입니다';
+  } else {
+    rankMsg.textContent = '저장 실패 — 잠시 후 다시 시도';
+  }
 }
 
 saveBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
 saveBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); audio(); commitScore(); });
 nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); commitScore(); } });
 rankBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
-rankBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); audio(); openRanking(-1); });
+rankBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); audio(); openRanking(); });
 document.getElementById('rankClose').addEventListener('click', (e) => { e.stopPropagation(); closeRanking(); });
 rankModal.addEventListener('click', (e) => { if (e.target === rankModal) closeRanking(); });
 
