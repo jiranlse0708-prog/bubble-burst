@@ -187,7 +187,7 @@ const STAGE3 = [
   "#...==========.....#",
   "#...e..............#",
   "#..====......====..#",
-  "#........e.........#",
+  "#........m.........#",
   "#....==========....#",
   "#..............e...#",
   "#..====......====..#",
@@ -252,7 +252,19 @@ const sfx = {
   pop:   () => { beep(880, 0.08, 'square', 0.07, 220); setTimeout(() => beep(1320, 0.07, 'square', 0.05), 60); },
   // 왕이 거품에 맞을 때: 묵직한 임팩트 + 카랑한 타격음
   kingHit: () => { beep(200, 0.16, 'sawtooth', 0.09, -120); setTimeout(() => beep(1046, 0.09, 'square', 0.06, 180), 40); setTimeout(() => beep(1568, 0.08, 'square', 0.05), 110); },
+  // 왕 처치(마지막 거품을 터뜨림): "팡!" 하는 시원한 팝 + 신나는 상승 팡파르
+  kingDie: () => {
+    // 1) "팡!" — 날카로운 팝 transient + 펑 하는 몸통 + 짧고 굵은 충격
+    beep(1500, 0.05, 'square', 0.1, -1000);
+    beep(560, 0.12, 'square', 0.09, -320);
+    setTimeout(() => beep(170, 0.16, 'sawtooth', 0.07, -70), 20);
+    // 2) 곧바로 터지는 신나는 상승 팡파르
+    [659, 880, 1047, 1319, 1568, 2093].forEach((f, i) => setTimeout(() => beep(f, 0.13, 'square', 0.075), 130 + i * 65));
+    setTimeout(() => beep(2093, 0.45, 'square', 0.075, 70), 560);  // 반짝이는 마침음
+  },
   fruit: () => { beep(880, 0.07, 'triangle', 0.06); setTimeout(() => beep(1175, 0.07, 'triangle', 0.06), 70); setTimeout(() => beep(1568, 0.09, 'triangle', 0.06), 140); },
+  // 목숨(1UP) 획득 — 밝고 신나는 상승 징글
+  oneup: () => { [659, 880, 1047, 1319, 1568].forEach((f, i) => setTimeout(() => beep(f, 0.12, 'square', 0.07), i * 80)); },
   die:   () => { beep(300, 0.25, 'sawtooth', 0.08, -200); setTimeout(() => beep(160, 0.35, 'sawtooth', 0.08, -100), 180); },
   clear: () => { [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, 0.14, 'square', 0.06), i * 110)); },
   start: () => { [392, 523, 659].forEach((f, i) => setTimeout(() => beep(f, 0.12, 'square', 0.06), i * 90)); },
@@ -433,7 +445,19 @@ const game = {
   newRecord: false, // set true on WIN when the score beats the old high
   winSpark: 0,      // confetti/firework spawn timer during WIN
   bossWarn: 0,      // seconds left to show the "DON'T TOUCH THE KING!" banner
+  runT: 0,          // 이번 플레이 경과 시간(초) — PLAYING 중에만 증가
+  clearTime: 0,     // 왕을 깬 순간의 경과 시간(초)
+  bestTime: +(localStorage.getItem('bb_besttime') || 0),  // 최단 클리어 기록(0 = 없음)
+  newTimeRecord: false, // WIN 시 최단 기록 경신 여부
 };
+
+/* 경과 시간(초) → "mm:ss.d" 문자열 */
+function fmtTime(s) {
+  const m = Math.floor(s / 60);
+  const ss = Math.floor(s % 60);
+  const d = Math.floor((s * 10) % 10);
+  return String(m).padStart(2, '0') + ':' + String(ss).padStart(2, '0') + '.' + d;
+}
 
 /* --- tile helpers --- */
 function tile(c, r) {
@@ -489,7 +513,7 @@ function aabb(a, b) {
    ========================================================================= */
 function loadStage(i) {
   const def = STAGES[i];
-  game.grid = def.map.map((row) => row.split('').map((ch) => (ch === 'e' || ch === 'P' || ch === 'K') ? '.' : ch));
+  game.grid = def.map.map((row) => row.split('').map((ch) => (ch === 'e' || ch === 'P' || ch === 'K' || ch === 'm') ? '.' : ch));
   game.enemies = [];
   game.bubbles = [];
   game.fruits = [];
@@ -515,6 +539,16 @@ function loadStage(i) {
           color: def.color, capT: 0, anim: Math.random() * 6, mad: false,
           canDrop: i === 1, dropping: 0,   // stage 2 enemies dive down through platforms
         });
+      } else if (ch === 'm') {
+        // 정예 적(미니보스급): 졸병보다 빠르고 위로 점프하며, 거품 2번 맞아야 잡힌다. 왕보다는 약하다.
+        game.enemies.push({
+          x: c * TILE + (TILE - 30) / 2, y: r * TILE, w: 30, h: 28,
+          vx: 0, vy: 0, dir: Math.random() < 0.5 ? -1 : 1,
+          grounded: false, dt: 0, state: 'walk', speed: speed * 1.45,
+          color: '#ff8a3a', capT: 0, anim: Math.random() * 6, mad: false,
+          canDrop: false, dropping: 0,
+          elite: true, hp: 2, hit: 0, jumpT: 0.8 + Math.random() * 1.0,
+        });
       } else if (ch === 'K') {
         game.king = {
           x: c * TILE + TILE / 2 - 28, y: r * TILE, baseY: r * TILE, w: 56, h: 50,
@@ -535,6 +569,8 @@ function startGame() {
   game.stage = 0;
   game.state = 'PLAYING';
   game.overlayT = 0;
+  game.runT = 0;            // 타이머 리셋
+  game.newTimeRecord = false;
   loadStage(0);
   sfx.start();
 }
@@ -590,6 +626,13 @@ function spawnFruit(x, y, kind) {
     x, y, w: 20, h: 20, vx: (Math.random() - 0.5) * 60, vy: -150,
     grounded: false, dt: 0, life: 7, kind: kind || FRUITS[(Math.random() * FRUITS.length) | 0],
     score: 500,
+  });
+}
+/* 정예 적 처치 보상: 먹으면 목숨 +1 이 되는 1UP 아이템 */
+function spawnLife(x, y) {
+  game.fruits.push({
+    x, y, w: 22, h: 22, vx: (Math.random() - 0.5) * 40, vy: -150,
+    grounded: false, dt: 0, life: 9, kind: 'life', score: 0,
   });
 }
 function burst(x, y, color, n = 10) {
@@ -671,6 +714,7 @@ function updatePlaying(dt) {
   const p = game.player;
   p.dt = dt;
   p.anim += dt;
+  game.runT += dt;          // 플레이 경과 시간 누적
   if (p.inv > 0) p.inv -= dt;
   if (game.bossWarn > 0) game.bossWarn -= dt;
 
@@ -720,6 +764,7 @@ function updatePlaying(dt) {
   for (const e of game.enemies) {
     e.dt = dt;
     e.anim += dt;
+    if (e.hit > 0) e.hit = Math.max(0, e.hit - dt);   // 피격 섬광 감쇠
     if (e.state === 'walk') {
       // patrol
       e.vx = e.dir * e.speed * (e.mad ? 1.4 : 1);
@@ -727,6 +772,15 @@ function updatePlaying(dt) {
       if (Math.random() < 0.012) e.dir = (p.x > e.x ? 1 : -1);
       moveX(e);
       if (e.hitWall) e.dir *= -1;
+      // 정예 적: 주기적으로 위로 점프 (한 방향 발판도 통과해 올라간다)
+      if (e.elite) {
+        e.jumpT -= dt;
+        if (e.grounded && e.jumpT <= 0) {
+          e.vy = -JUMP_VEL * 0.92;
+          e.grounded = false;
+          e.jumpT = 1.1 + Math.random() * 1.2;
+        }
+      }
       if (e.dropping > 0) {
         // diving off a bar: fall through one-way platforms until landing
         e.dropping -= dt;
@@ -809,11 +863,19 @@ function updatePlaying(dt) {
     if (b.kind !== 'empty') continue;
     for (const e of game.enemies) {
       if (e.state === 'walk' && aabb(b, e)) {
-        e.state = 'bubbled'; e.capT = CAPTURE_TIME / DIFFS[game.diff].mult;
-        e.vx = 0; e.vy = 0;
         b.life = -1; // consume bubble
-        sfx.capture();
-        burst(e.x + e.w / 2, e.y + e.h / 2, COL.cyan, 6);
+        if (e.elite && e.hp > 1) {
+          // 정예 적: 첫 거품엔 갇히지 않고 피만 깎이며 더 사나워진다
+          e.hp--; e.hit = 0.22; e.mad = true;
+          sfx.kingHit();
+          game.shake = 0.25;
+          burst(e.x + e.w / 2, e.y + e.h / 2, '#ffffff', 10);
+        } else {
+          e.state = 'bubbled'; e.capT = CAPTURE_TIME / DIFFS[game.diff].mult;
+          e.vx = 0; e.vy = 0;
+          sfx.capture();
+          burst(e.x + e.w / 2, e.y + e.h / 2, COL.cyan, 6);
+        }
         break;
       }
     }
@@ -849,8 +911,14 @@ function updatePlaying(dt) {
   for (const e of game.enemies) {
     if (e.state === 'bubbled' && aabb(p, e)) {
       e.state = 'dead';
-      addScore(100, e.x + e.w / 2, e.y);
-      spawnFruit(e.x, e.y, null);
+      if (e.elite) {
+        // 정예 적을 처치하면 과일 대신 목숨(1UP)이 나온다
+        addScore(300, e.x + e.w / 2, e.y);
+        spawnLife(e.x + e.w / 2 - 11, e.y);
+      } else {
+        addScore(100, e.x + e.w / 2, e.y);
+        spawnFruit(e.x, e.y, null);
+      }
       burst(e.x + e.w / 2, e.y + e.h / 2, e.color, 14);
       sfx.pop();
     }
@@ -872,13 +940,30 @@ function updatePlaying(dt) {
       return;
     } else if (k.state === 'bubbled' && aabb(p, k)) {
       // 마지막 거품을 터뜨리면 왕 처치 → 졸병이 남아있어도 즉시 스테이지 클리어
-      addScore(3000, k.x + k.w / 2, k.y);
-      burst(k.x + k.w / 2, k.y + k.h / 2, COL.yellow, 26);
+      const kx = k.x + k.w / 2, ky = k.y + k.h / 2;
+      addScore(3000, kx, ky);
+      // 화려한 다색 폭발 — 쾌감 강조
+      sfx.kingDie();
+      game.shake = 0.9;
+      burst(kx, ky, COL.yellow, 30);
+      burst(kx, ky, COL.pink, 26);
+      burst(kx, ky, COL.cyan, 22);
+      burst(kx, ky, '#ffffff', 18);
+      // 사방으로 퍼지는 2차 폭죽 (시차를 둔 연쇄 폭발)
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        setTimeout(() => burst(kx + Math.cos(a) * 36, ky + Math.sin(a) * 28, PARTY[i % PARTY.length], 14), 70 + i * 55);
+      }
       game.king = null;               // boss defeated
-      game.shake = 0.5; sfx.pop();
+      // 왕을 깬 시간 기록 + 최단 기록 갱신
+      game.clearTime = game.runT;
+      if (game.bestTime === 0 || game.clearTime < game.bestTime) {
+        game.bestTime = game.clearTime;
+        game.newTimeRecord = true;
+        localStorage.setItem('bb_besttime', game.bestTime);
+      }
       game.state = 'STAGECLEAR';
       game.overlayT = 0;
-      sfx.clear();
       return;
     }
   }
@@ -887,7 +972,19 @@ function updatePlaying(dt) {
   for (const f of game.fruits) {
     f.dt = dt; f.life -= dt;
     moveX(f); moveY(f, true);
-    if (aabb(p, f)) { f.life = -1; addScore(f.score, f.x + f.w / 2, f.y); sfx.fruit(); }
+    if (aabb(p, f)) {
+      f.life = -1;
+      if (f.kind === 'life') {
+        // 목숨 +1
+        game.lives++;
+        game.particles.push({ x: f.x + f.w / 2, y: f.y, text: '1UP', vy: -55, life: 1.2, color: COL.green, r: 0 });
+        burst(f.x + f.w / 2, f.y + f.h / 2, COL.green, 12);
+        sfx.oneup();
+      } else {
+        addScore(f.score, f.x + f.w / 2, f.y);
+        sfx.fruit();
+      }
+    }
   }
   game.fruits = game.fruits.filter((f) => f.life > 0);
 
@@ -996,17 +1093,31 @@ function drawCreature(e, color, dir) {
   ctx.restore();
 }
 
-/* enemies — round angry blobs */
+/* enemies — round angry blobs (정예 적은 뿔 + 2회 피격 연출) */
 function drawEnemy(e) {
   const cx = e.x + e.w / 2, cy = e.y + e.h / 2;
   const bob = Math.sin(e.anim * 7) * 1.2;
+  const flash = e.hit > 0 ? e.hit / 0.22 : 0;   // 피격 섬광 1→0
   ctx.save();
   ctx.translate(cx, cy + bob);
+  if (flash > 0) { const s = 1 + flash * 0.18; ctx.scale(s, s); ctx.shadowColor = '#fff'; ctx.shadowBlur = 16 * flash; }
+  // 정예 적 뿔 (몸통 뒤)
+  if (e.elite) {
+    ctx.fillStyle = '#ffd23a';
+    ctx.beginPath(); ctx.moveTo(-e.w * 0.34, -e.h * 0.30); ctx.lineTo(-e.w * 0.52, -e.h * 0.66); ctx.lineTo(-e.w * 0.16, -e.h * 0.42); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(e.w * 0.34, -e.h * 0.30); ctx.lineTo(e.w * 0.52, -e.h * 0.66); ctx.lineTo(e.w * 0.16, -e.h * 0.42); ctx.fill();
+  }
   // body
   const grad = ctx.createRadialGradient(-3, -4, 2, 0, 0, e.w / 2 + 3);
   grad.addColorStop(0, '#fff6'); grad.addColorStop(0.25, e.color); grad.addColorStop(1, '#00000055');
   ctx.fillStyle = grad;
   ctx.beginPath(); ctx.arc(0, 0, e.w / 2 + 1, 0, 7); ctx.fill();
+  ctx.shadowBlur = 0;
+  // 피격 흰 섬광 오버레이
+  if (flash > 0) {
+    ctx.globalAlpha = flash * 0.8; ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(0, 0, e.w / 2 + 1, 0, 7); ctx.fill(); ctx.globalAlpha = 1;
+  }
   // little feet
   ctx.fillStyle = '#00000066';
   ctx.beginPath(); ctx.ellipse(-6, e.h / 2 - 1, 4, 3, 0, 0, 7); ctx.fill();
@@ -1120,7 +1231,17 @@ function drawFruit(f) {
   // blink near end of life
   if (f.life < 2 && Math.floor(f.life * 8) % 2 === 0) return;
   ctx.save(); ctx.translate(cx, cy);
-  if (f.kind === 'cherry') {
+  if (f.kind === 'life') {
+    // 목숨 아이콘 (HUD 목숨과 동일한 초록 머리) + "+1" 배지
+    const pulse = 1 + Math.sin(f.life * 6) * 0.08;
+    ctx.save(); ctx.scale(pulse, pulse);
+    ctx.fillStyle = COL.green;
+    ctx.beginPath(); ctx.arc(0, 0, 9, Math.PI, 0); ctx.lineTo(9, 6); ctx.lineTo(-9, 6); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(-3.5, -2, 2.6, 0, 7); ctx.arc(3.5, -2, 2.6, 0, 7); ctx.fill();
+    ctx.fillStyle = '#16203a'; ctx.beginPath(); ctx.arc(-3.5, -2, 1.2, 0, 7); ctx.arc(3.5, -2, 1.2, 0, 7); ctx.fill();
+    ctx.restore();
+    text('+1', 8, -3, 8, COL.yellow, 'left');
+  } else if (f.kind === 'cherry') {
     ctx.strokeStyle = '#4caf50'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(-4, 7); ctx.quadraticCurveTo(0, -8, 1, -7); ctx.moveTo(5, 7); ctx.quadraticCurveTo(2, -8, 1, -7); ctx.stroke();
     ctx.fillStyle = '#ff3b5c';
@@ -1170,6 +1291,8 @@ function drawHUD() {
     ctx.restore();
   }
   text('STAGE ' + (game.stage + 1), W - 14, 30, 8, COL.ink, 'right');
+  // 실시간 플레이 타이머 (HUD 바 바로 아래 좌측)
+  text('TIME ' + fmtTime(game.runT), 10, 50, 8, COL.cyan, 'left');
   if (muteAll) text('MUTE', 8, H - 8, 7, COL.pink, 'left');
 }
 
@@ -1337,14 +1460,23 @@ function drawWin() {
   drawCreature(dinoR, COL.green, -1);
 
   // final score panel
-  text('FINAL SCORE', W / 2, 318, 10, COL.pink, 'center');
-  text(String(game.score).padStart(7, '0'), W / 2, 348, 20, COL.yellow, 'center');
+  text('FINAL SCORE', W / 2, 312, 10, COL.pink, 'center');
+  text(String(game.score).padStart(7, '0'), W / 2, 340, 18, COL.yellow, 'center');
+
+  // 클리어 타임 (왕을 깬 시간) + 최단 기록
+  let timeLine = 'TIME ' + fmtTime(game.clearTime);
+  if (game.newTimeRecord) {
+    if (Math.floor(t * 4) % 2 === 0) timeLine += '  ★NEW';
+  } else if (game.bestTime > 0) {
+    timeLine += '  BEST ' + fmtTime(game.bestTime);
+  }
+  text(timeLine, W / 2, 368, 9, game.newTimeRecord ? COL.cyan : '#9aa3d0', 'center');
 
   // NEW RECORD! flashes if the high score was beaten
   if (game.newRecord && Math.floor(t * 4) % 2 === 0) {
-    text('★ NEW RECORD! ★', W / 2, 384, 12, COL.cyan, 'center');
+    text('★ NEW RECORD! ★', W / 2, 394, 11, COL.cyan, 'center');
   } else if (!game.newRecord) {
-    text('HIGH ' + String(game.high).padStart(7, '0'), W / 2, 382, 9, '#9aa3d0', 'center');
+    text('HIGH ' + String(game.high).padStart(7, '0'), W / 2, 393, 9, '#9aa3d0', 'center');
   }
 
   // thank-you + prompt
@@ -1377,8 +1509,10 @@ function drawTitle() {
   text('MOVE: ARROWS / WASD', W / 2, 452, 7, '#9aa3d0', 'center');
   text('JUMP: UP  SHOOT: SPACE  M: ' + (muteAll ? 'SOUND OFF' : 'MUTE'), W / 2, 468, 7, '#9aa3d0', 'center');
 
-  text(String(game.high).padStart(7, '0'), W / 2, 50, 9, COL.yellow, 'center');
   text('HIGH SCORE', W / 2, 36, 7, COL.pink, 'center');
+  text(String(game.high).padStart(7, '0'), W / 2, 50, 9, COL.yellow, 'center');
+  // 최단 클리어 기록
+  if (game.bestTime > 0) text('BEST TIME ' + fmtTime(game.bestTime), W / 2, 66, 7, COL.cyan, 'center');
 }
 
 /* =========================================================================
