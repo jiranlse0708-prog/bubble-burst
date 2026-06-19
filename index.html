@@ -117,7 +117,7 @@ const W = 640, H = 480, TILE = 32, COLS = 20, ROWS = 15;
 /* ---- tuning -------------------------------------------------------------- */
 const GRAVITY      = 1600;   // px/s^2
 const MOVE_SPEED   = 165;    // player horizontal px/s
-const JUMP_VEL     = 510;    // player jump impulse px/s  (clears ~2.5 tiles)
+const JUMP_VEL     = 580;    // player jump impulse px/s  (clears ~3.2 tiles: 발판 도달 + 과한 오버슈트 억제)
 const BUBBLE_SPEED = 320;    // bubble fly px/s
 const BUBBLE_FLY   = 0.45;   // seconds the bubble travels horizontally
 const BUBBLE_RISE  = 48;     // float-up px/s after fly phase
