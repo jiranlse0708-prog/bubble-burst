@@ -1812,8 +1812,6 @@ function drawWin() {
     lx += cw;
   }
 
-  text('STAGE 3 COMPLETE', W / 2, 168, 11, COL.cyan, 'center');
-
   // trophy with celebrating dino on each side
   const pop = Math.min(1, ot * 2);              // little entrance pop
   drawTrophy(W / 2, 230, 2.4 * pop, t);
@@ -1844,9 +1842,8 @@ function drawWin() {
     text('HIGH ' + String(game.high).padStart(7, '0'), W / 2, 393, 9, '#9aa3d0', 'center');
   }
 
-  // thank-you + prompt
-  text('THANK YOU FOR PLAYING!', W / 2, 408, 9, COL.green, 'center');
-  if (Math.floor(t * 1.6) % 2 === 0) text('PRESS ENTER', W / 2, 430, 11, COL.ink, 'center');
+  // prompt
+  if (Math.floor(t * 1.6) % 2 === 0) text('PRESS ENTER', W / 2, 422, 11, COL.ink, 'center');
 }
 
 function drawTitle() {
