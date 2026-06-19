@@ -203,6 +203,8 @@ const sfx = {
     setTimeout(() => beep(1568, 0.5, 'square', 0.07), melody.length * 130);
   },
   firework: () => beep(180 + Math.random() * 120, 0.18, 'sawtooth', 0.05, 320),
+  // klaxon-style alert when the boss appears
+  alarm: () => { for (let i = 0; i < 3; i++) setTimeout(() => { beep(660, 0.13, 'square', 0.07); setTimeout(() => beep(440, 0.15, 'square', 0.07), 95); }, i * 320); },
 };
 
 /* =========================================================================
@@ -351,6 +353,7 @@ const game = {
   shake: 0,
   newRecord: false, // set true on WIN when the score beats the old high
   winSpark: 0,      // confetti/firework spawn timer during WIN
+  bossWarn: 0,      // seconds left to show the "DON'T TOUCH THE KING!" banner
 };
 
 /* --- tile helpers --- */
@@ -442,6 +445,9 @@ function loadStage(i) {
       }
     }
   }
+  // boss-stage intro warning
+  game.bossWarn = game.king ? 3.2 : 0;
+  if (game.king) sfx.alarm();
 }
 
 function startGame() {
@@ -587,6 +593,7 @@ function updatePlaying(dt) {
   p.dt = dt;
   p.anim += dt;
   if (p.inv > 0) p.inv -= dt;
+  if (game.bossWarn > 0) game.bossWarn -= dt;
 
   // --- player input ---
   let ax = 0;
@@ -1103,6 +1110,8 @@ function render() {
     ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1; ctx.strokeRect(bx, by, bw, 8);
   }
 
+  if (game.state === 'PLAYING' && game.bossWarn > 0) drawBossWarning();
+
   if (game.state === 'STAGECLEAR') overlayBox('STAGE CLEAR!', STAGES[game.stage].name, COL.cyan);
   if (game.state === 'GAMEOVER') overlayBox('GAME OVER', 'PRESS ENTER', COL.pink);
   if (game.state === 'WIN') drawWin();
@@ -1116,6 +1125,23 @@ function overlayBox(title, sub, color) {
   const blink = game.state === 'STAGECLEAR' || Math.floor(game.t * 2) % 2 === 0 || game.state === 'WIN';
   text(title, W / 2, H / 2 - 6, 26, color, 'center');
   if (blink) text(sub, W / 2, H / 2 + 30, 10, COL.ink, 'center');
+}
+
+/* flashing alert shown for a few seconds when the KING boss appears */
+function drawBossWarning() {
+  const flashOn = Math.floor(game.t * 6) % 2 === 0;
+  const cy = H * 0.40;
+  ctx.save();
+  // hazard band
+  ctx.fillStyle = 'rgba(40,0,12,0.55)';
+  ctx.fillRect(0, cy - 30, W, 70);
+  ctx.fillStyle = flashOn ? '#ff2f6b' : '#ffd23a';
+  ctx.fillRect(0, cy - 30, W, 3);
+  ctx.fillRect(0, cy + 37, W, 3);
+  text('!  W A R N I N G  !', W / 2, cy - 6, 10, flashOn ? COL.yellow : '#ff7aa6', 'center');
+  const pulse = 14 + Math.sin(game.t * 10) * 1.2;
+  text("DON'T TOUCH THE KING!", W / 2, cy + 24, pulse, flashOn ? '#ff5fb0' : '#ffffff', 'center');
+  ctx.restore();
 }
 
 /* a golden victory trophy */
