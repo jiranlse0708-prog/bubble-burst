@@ -80,22 +80,10 @@
     box-shadow: inset 0 3px 0 rgba(255,255,255,0.35), 0 5px 0 rgba(0,0,0,0.45), 0 8px 12px rgba(0,0,0,0.5);
     transition: transform .05s, box-shadow .05s, filter .05s;
   }
-  .rbtn .lbl { font-size: 2vmin; margin-top: 0.6vmin; opacity: 0.85; }
+  .rbtn .lbl { font-size: 2vmin; margin-top: 1.8vmin; opacity: 0.85; }
   .rbtn:active, .rbtn.on { transform: translateY(4px); filter: brightness(1.2); box-shadow: inset 0 3px 6px rgba(0,0,0,0.4), 0 1px 0 rgba(0,0,0,0.45); }
   #b-shoot { background: radial-gradient(circle at 38% 30%, #ffe27a, #ffb02e 60%, #e07d00); color: #5a3500; }
   #b-jump  { background: radial-gradient(circle at 38% 30%, #7affc0, #2fe08a 55%, #14a85e); color: #053a22; margin-bottom: 7vmin; }
-
-  /* START / 일시정지 알약 — 하단 중앙 */
-  #b-start {
-    pointer-events: auto;
-    position: absolute; left: 50%; bottom: calc(4vmin + env(safe-area-inset-bottom)); transform: translateX(-50%);
-    padding: 1.4vmin 4vmin;
-    background: linear-gradient(145deg, #3a3d52, #191b27);
-    border: 2px solid #0a0b12; border-radius: 999px;
-    color: #ffe24d; font-size: 2.4vmin; letter-spacing: 1px;
-    box-shadow: inset 0 2px 0 rgba(255,255,255,0.14), 0 3px 0 #05060c, 0 6px 10px rgba(0,0,0,0.5);
-  }
-  #b-start:active { transform: translateX(-50%) translateY(2px); filter: brightness(1.4); }
   /* "rotate your device" overlay — only on touch devices held in portrait */
   #rotate { display: none; }
   .rot-emoji { font-size: 66px; animation: rothint 1.8s ease-in-out infinite; }
@@ -111,26 +99,57 @@
     }
     body.touch #pad { display: none; }
   }
-  /* ===== SHARE GAME button (게임오버 / 올클리어 화면에서만 표시) ===== */
-  #share {
-    display: none;                       /* .show 가 붙기 전엔 숨김 */
+  /* ===== 종료 화면 버튼 (게임오버 / 올클리어): SHARE + RANKING ===== */
+  #end-btns {
+    display: none;
     position: fixed; left: 50%; top: 62%;
     transform: translate(-50%, -50%);
-    z-index: 30;
-    font-family: 'Press Start 2P', monospace;
-    font-size: 11px; letter-spacing: 0.5px;
-    color: #05060f;
-    background: linear-gradient(145deg, #66f0ff, #21c6e6 60%, #119ec0);
-    border: 3px solid #0a2a32; border-radius: 999px;
-    padding: 14px 22px; cursor: pointer;
-    align-items: center; gap: 8px;
-    box-shadow: inset 0 3px 0 rgba(255,255,255,0.45), 0 5px 0 rgba(0,0,0,0.45), 0 8px 16px rgba(0,0,0,0.5);
+    z-index: 30; gap: 12px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #end-btns.show { display: flex; }
+  .ebtn {
+    font-family: 'Press Start 2P', monospace; font-size: 11px; letter-spacing: 0.5px;
+    cursor: pointer; border-radius: 999px; padding: 13px 18px; color: #05060f;
+    display: inline-flex; align-items: center; gap: 8px;
+    border: 3px solid rgba(0,0,0,0.5);
+    box-shadow: inset 0 3px 0 rgba(255,255,255,0.4), 0 5px 0 rgba(0,0,0,0.4), 0 8px 16px rgba(0,0,0,0.5);
     transition: transform .06s, filter .06s, box-shadow .06s;
     -webkit-tap-highlight-color: transparent;
   }
-  #share.show { display: inline-flex; }
-  #share:active { transform: translate(-50%, calc(-50% + 3px)); filter: brightness(1.1); box-shadow: inset 0 3px 6px rgba(0,0,0,0.35), 0 1px 0 rgba(0,0,0,0.45); }
+  .ebtn:active { transform: translateY(3px); filter: brightness(1.1); box-shadow: inset 0 3px 6px rgba(0,0,0,0.35), 0 1px 0 rgba(0,0,0,0.4); }
+  #share    { background: linear-gradient(145deg, #66f0ff, #21c6e6 60%, #119ec0); }
+  #rank-btn { background: linear-gradient(145deg, #ffe27a, #ffb02e 60%, #e07d00); color: #3a2400; }
   #share svg { width: 15px; height: 15px; }
+
+  /* ===== 랭킹 모달 ===== */
+  #rankModal { display: none; position: fixed; inset: 0; z-index: 50;
+    background: rgba(3,4,12,0.82); align-items: center; justify-content: center;
+    font-family: 'Press Start 2P', monospace; }
+  #rankModal.show { display: flex; }
+  .rank-card { width: min(86vw, 470px); background: #0d1030; border: 3px solid #38e6ff; border-radius: 14px;
+    padding: 22px 22px 18px; box-shadow: 0 0 44px rgba(56,230,255,0.4); }
+  .rank-card h2 { color: #ffe24d; font-size: 14px; text-align: center; margin: 0 0 16px; letter-spacing: 1px; }
+  #rankEntry { display: none; margin-bottom: 14px; }
+  #rankEntry.show { display: block; }
+  #rankEntry .row { display: flex; gap: 8px; }
+  #nameInput { flex: 1; min-width: 0; font-family: 'Press Start 2P', monospace; font-size: 11px;
+    padding: 10px 12px; color: #fff; background: #11142e; border: 2px solid #38e6ff; border-radius: 8px; outline: none; }
+  #nameInput::placeholder { color: #5b6498; }
+  #saveBtn { font-family: 'Press Start 2P', monospace; font-size: 10px; cursor: pointer; white-space: nowrap;
+    color: #053a22; background: linear-gradient(145deg, #7affc0, #2fe08a 55%, #14a85e);
+    border: none; border-radius: 8px; padding: 10px 16px; }
+  #rankMsg { color: #ff6f8c; font-size: 8px; line-height: 1.7; margin-top: 8px; min-height: 10px; text-align: center; }
+  .rank-table { width: 100%; border-collapse: collapse; }
+  .rank-table th { color: #8b93c0; font-size: 8px; text-align: left; padding: 6px 5px; border-bottom: 2px solid #2a2d50; }
+  .rank-table th.num, .rank-table td.num { text-align: center; width: 34px; }
+  .rank-table th.rt, .rank-table td.rt { text-align: right; }
+  .rank-table td { color: #cfd6ff; font-size: 9px; padding: 8px 5px; border-bottom: 1px solid #1c1f3e; }
+  .rank-table td.num { color: #38e6ff; }
+  .rank-table tr.me td { color: #ffe24d; background: rgba(255,226,77,0.10); }
+  .rank-empty { color: #5b6498; font-size: 10px; text-align: center; padding: 26px 0; line-height: 1.8; }
+  .rank-close { display: block; margin: 18px auto 0; font-family: 'Press Start 2P', monospace; font-size: 10px;
+    color: #05060f; background: #38e6ff; border: none; border-radius: 8px; padding: 11px 24px; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -144,16 +163,32 @@
     <div class="rbtn" id="b-shoot" data-key="shoot" aria-label="shoot">&#9675;<span class="lbl">SHOOT</span></div>
     <div class="rbtn" id="b-jump"  data-key="jump"  aria-label="jump">&#8593;<span class="lbl">JUMP</span></div>
   </div>
-  <div class="pad-btn" id="b-start" data-key="enter" aria-label="start">START</div>
 </div>
 <div id="rotate">
   <div class="rot-emoji">&#128241;</div>
   <div class="rot-text">가로로 돌려주세요<span>ROTATE YOUR DEVICE</span></div>
 </div>
-<button id="share" aria-label="Share game">
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"/></svg>
-  <span id="share-label">SHARE GAME</span>
-</button>
+<div id="end-btns">
+  <button id="share" class="ebtn" aria-label="Share game">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"/></svg>
+    <span id="share-label">SHARE GAME</span>
+  </button>
+  <button id="rank-btn" class="ebtn">&#127942; RANKING</button>
+</div>
+<div id="rankModal">
+  <div class="rank-card">
+    <h2>&#127942; RANKING · TOP 10</h2>
+    <div id="rankEntry">
+      <div class="row">
+        <input id="nameInput" maxlength="6" placeholder="닉네임" autocomplete="off" spellcheck="false" />
+        <button id="saveBtn">저장</button>
+      </div>
+      <div id="rankMsg"></div>
+    </div>
+    <div id="rankBody"></div>
+    <button class="rank-close" id="rankClose">CLOSE</button>
+  </div>
+</div>
 <script>
 "use strict";
 /* =========================================================================
@@ -438,10 +473,12 @@ const KEYMAP = {
   KeyM: 'mute',
 };
 addEventListener('keydown', (e) => {
+  if (e.target && e.target.tagName === 'INPUT') return;   // 닉네임 입력 중엔 게임 키 무시
   const a = KEYMAP[e.code];
   if (a) { e.preventDefault(); audio(); if (!keys[a]) pressed[a] = true; keys[a] = true; }
 });
 addEventListener('keyup', (e) => {
+  if (e.target && e.target.tagName === 'INPUT') return;
   const a = KEYMAP[e.code];
   if (a) { e.preventDefault(); keys[a] = false; }
 });
@@ -498,59 +535,143 @@ setupTouch();
    모바일은 네이티브 공유 시트(navigator.share), 그 외엔 링크를 클립보드에
    복사하고 "LINK COPIED!"를 잠깐 표시한다.
    ========================================================================= */
-function setupShareButton(opts) {
-  opts = opts || {};
-  const btn   = document.getElementById('share');
-  const label = document.getElementById('share-label');
-  const cfg = {
-    title: opts.title || document.title,
-    text:  opts.text  || '',
-    url:   opts.url   || location.href,
-  };
+const endBtns  = document.getElementById('end-btns');
+const shareBtn = document.getElementById('share');
+const shareLbl = document.getElementById('share-label');
+const rankBtn  = document.getElementById('rank-btn');
 
-  function share() {
-    if (navigator.share) {
-      navigator.share({ title: cfg.title, text: cfg.text, url: cfg.url }).catch(() => {});
-    } else if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(cfg.url).then(() => {
-        label.textContent = 'LINK COPIED!';
-        setTimeout(() => { label.textContent = 'SHARE GAME'; }, 1600);
-      }).catch(() => { label.textContent = 'COPY FAILED'; });
-    }
+const SHARE_URL = location.href.split('#')[0];
+
+function flashShareLabel(msg) {
+  shareLbl.textContent = msg;
+  setTimeout(() => { shareLbl.textContent = 'SHARE GAME'; }, 1600);
+}
+function copyLinkToClipboard() {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(SHARE_URL)
+      .then(() => flashShareLabel('LINK COPIED!'))
+      .catch(() => execCopyFallback());
+  } else {
+    execCopyFallback();
   }
+}
+function execCopyFallback() {
+  // clipboard API가 막힌 환경(비-HTTPS 등): 임시 textarea + execCommand
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = SHARE_URL; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    flashShareLabel(ok ? 'LINK COPIED!' : 'COPY FAILED');
+  } catch (_) { flashShareLabel('COPY FAILED'); }
+}
+function shareGameLink() {
+  // navigator.share 지원 시 공유 시트, 아니면 클립보드 복사
+  if (navigator.share) {
+    navigator.share({ title: 'BUBBLE BURST', text: '🫧 같이 해볼래? 버블 쏘는 아케이드 게임!', url: SHARE_URL })
+      .catch(() => {});   // 사용자가 공유 취소하면 무시
+  } else {
+    copyLinkToClipboard();
+  }
+}
+shareBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+shareBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); audio(); shareGameLink(); });
 
-  btn.addEventListener('pointerdown', (e) => e.stopPropagation());
-  btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); share(); });
+/* =========================================================================
+   RANKING — 로컬 저장(localStorage), 클리어 타임이 빠를수록 상위, TOP 10.
+   기록: { name(한글), time(초), score }. 클리어(WIN) 화면에서만 등록 가능하고
+   닉네임은 한글만·중복 불가. ※ 현재는 기기 한정 저장 — 전체 공유로 바꾸려면
+   getRanks/saveRank/rankNameTaken 를 서버 API 호출로 교체하면 된다.
+   ========================================================================= */
+const RANK_KEY = 'bb_ranks_v2', RANK_MAX = 10;
+const NAME_RE = /^[가-힣A-Za-z0-9]+$/;   // 한글·영문·숫자 허용 (한글/영문 무관)
+function getRanks() { try { return JSON.parse(localStorage.getItem(RANK_KEY) || '[]'); } catch (_) { return []; } }
+function rankNameTaken(name) { return getRanks().some((r) => r.name === name); }
+function saveRank(rec) {
+  const list = getRanks();
+  list.push(rec);
+  list.sort((a, b) => a.time - b.time);   // 클리어 타임 빠를수록 상위
+  const top = list.slice(0, RANK_MAX);
+  localStorage.setItem(RANK_KEY, JSON.stringify(top));
+  return top.indexOf(rec);                // 내 기록의 순위(없으면 -1)
+}
+function escapeHtml(s) { return String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
 
-  return {
-    share,
-    show:   () => { label.textContent = 'SHARE GAME'; btn.classList.add('show'); },
-    hide:   () => btn.classList.remove('show'),
-    toggle: () => btn.classList.toggle('show'),
-  };
+const rankModal = document.getElementById('rankModal');
+const rankBody  = document.getElementById('rankBody');
+const rankEntry = document.getElementById('rankEntry');
+const nameInput = document.getElementById('nameInput');
+const saveBtn   = document.getElementById('saveBtn');
+const rankMsg   = document.getElementById('rankMsg');
+let rankOpen = false;
+
+function buildRankTable(highlight) {
+  const list = getRanks();
+  if (!list.length) {
+    rankBody.innerHTML = '<div class="rank-empty">아직 기록이 없어요.<br/>첫 주자가 되어보세요!</div>';
+    return;
+  }
+  let rows = '';
+  list.forEach((r, i) => {
+    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1);
+    rows += '<tr class="' + (i === highlight ? 'me' : '') + '">' +
+      '<td class="num">' + medal + '</td>' +
+      '<td>' + escapeHtml(r.name) + '</td>' +
+      '<td class="rt">' + fmtTime(r.time) + '</td>' +
+      '<td class="rt">' + String(r.score).padStart(6, '0') + '</td></tr>';
+  });
+  rankBody.innerHTML =
+    '<table class="rank-table"><thead><tr>' +
+    '<th class="num">#</th><th>이름</th><th class="rt">TIME</th><th class="rt">SCORE</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table>';
 }
 
-const shareGame = setupShareButton({
-  title: 'BUBBLE BURST',
-  text:  '🫧 같이 해볼래? 버블 쏘는 아케이드 게임!',
-  url:   location.href,
-});
+function openRanking(highlight) {
+  const canRegister = (game.state === 'WIN' && !game.saved);   // 클리어 + 미등록일 때만 입력칸
+  rankEntry.classList.toggle('show', canRegister);
+  rankMsg.textContent = '';
+  if (canRegister) nameInput.value = '';
+  buildRankTable(highlight == null ? -1 : highlight);
+  rankModal.classList.add('show');
+  rankOpen = true;
+  if (canRegister) setTimeout(() => { try { nameInput.focus(); } catch (_) {} }, 30);
+}
+function closeRanking() { rankModal.classList.remove('show'); rankOpen = false; }
 
-/* 게임오버/올클리어에서만 버튼을 노출하고, 캔버스 크기에 맞춰 위치를 잡는다.
-   show()/hide()는 상태가 바뀔 때만 호출 — 매 프레임 부르면 "LINK COPIED!"가
-   바로 초기화돼 버리므로 위치 갱신과 표시 토글을 분리한다. */
+function commitScore() {
+  const name = (nameInput.value || '').trim();
+  if (!NAME_RE.test(name)) { rankMsg.textContent = '닉네임을 입력하세요 (한글·영문·숫자, 1~6자)'; return; }
+  if (rankNameTaken(name)) { rankMsg.textContent = '이미 등록된 닉네임입니다'; return; }
+  const idx = saveRank({ name, time: game.clearTime, score: game.score });
+  game.saved = true;
+  localStorage.setItem('bb_lastname', name);
+  rankEntry.classList.remove('show');
+  rankMsg.textContent = '';
+  buildRankTable(idx);
+}
+
+saveBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+saveBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); audio(); commitScore(); });
+nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); commitScore(); } });
+rankBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+rankBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); audio(); openRanking(-1); });
+document.getElementById('rankClose').addEventListener('click', (e) => { e.stopPropagation(); closeRanking(); });
+rankModal.addEventListener('click', (e) => { if (e.target === rankModal) closeRanking(); });
+
+/* 게임오버/올클리어에서만 버튼을 노출하고, 캔버스 크기에 맞춰 위치를 잡는다. */
 let prevShareState = null;
 function updateShareButton() {
-  const btn = document.getElementById('share');
   const showing = (game.state === 'GAMEOVER' || game.state === 'WIN');
   if (showing) {
     const r = canvas.getBoundingClientRect();
-    const frac = game.state === 'WIN' ? 0.95 : 0.72;   // WIN은 텍스트가 빽빽해 더 아래
-    btn.style.left = (r.left + r.width / 2) + 'px';
-    btn.style.top  = (r.top + r.height * frac) + 'px';
+    const frac = game.state === 'WIN' ? 0.93 : 0.72;   // WIN은 텍스트가 빽빽해 더 아래
+    endBtns.style.left = (r.left + r.width / 2) + 'px';
+    endBtns.style.top  = (r.top + r.height * frac) + 'px';
   }
   if (game.state !== prevShareState) {
-    if (showing) shareGame.show(); else shareGame.hide();
+    if (showing) { shareLbl.textContent = 'SHARE GAME'; endBtns.classList.add('show'); }
+    else { endBtns.classList.remove('show'); if (rankOpen) closeRanking(); }
     prevShareState = game.state;
   }
 }
@@ -741,6 +862,7 @@ function startGame() {
   game.overlayT = 0;
   game.runT = 0;            // 타이머 리셋
   game.newTimeRecord = false;
+  game.saved = false;       // 이번 판 랭킹 등록 여부 초기화
   loadStage(0);
   sfx.start();
 }
@@ -859,10 +981,10 @@ function update(dt) {
   } else if (game.state === 'WIN') {
     game.overlayT += dt;
     updateWinFx(dt);
-    if (game.overlayT > 0.6 && pressed.enter) { game.state = 'TITLE'; }
+    if (game.overlayT > 0.6 && pressed.enter && !rankOpen) { game.state = 'TITLE'; }
   } else if (game.state === 'GAMEOVER') {
     game.overlayT += dt;
-    if (game.overlayT > 0.6 && pressed.enter) { game.state = 'TITLE'; }
+    if (game.overlayT > 0.6 && pressed.enter && !rankOpen) { game.state = 'TITLE'; }
   }
 
   // update particles in every state
@@ -1464,8 +1586,8 @@ function drawHUD() {
   ctx.fillRect(0, 0, W, 34);
   text('1UP', 10, 14, 8, COL.cyan);
   text(String(game.score).padStart(7, '0'), 10, 28, 10, COL.ink);
-  text('HIGH', W / 2, 14, 8, COL.pink, 'center');
-  text(String(game.high).padStart(7, '0'), W / 2, 28, 10, COL.yellow, 'center');
+  text('TIME', W / 2, 14, 8, COL.pink, 'center');
+  text(fmtTime(game.runT), W / 2, 28, 10, COL.cyan, 'center');
   // lives icons
   for (let i = 0; i < Math.max(0, game.lives); i++) {
     const lx = W - 16 - i * 20;
@@ -1476,8 +1598,6 @@ function drawHUD() {
     ctx.restore();
   }
   text('STAGE ' + (game.stage + 1), W - 14, 30, 8, COL.ink, 'right');
-  // 실시간 플레이 타이머 (HUD 바 바로 아래 좌측)
-  text('TIME ' + fmtTime(game.runT), 10, 50, 8, COL.cyan, 'left');
   if (muteAll) text('MUTE', 8, H - 8, 7, COL.pink, 'left');
 }
 
