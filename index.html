@@ -508,9 +508,14 @@ async function doShare() {
     catch (e) { if (e && e.name === 'AbortError') return; /* 미지원/실패 → 복사로 폴백 */ }
   }
   const ok = await copyText(text);
-  shareCopiedT = 1.8;
-  shareBtn.classList.add('copied');
-  shareBtn.textContent = ok ? '✅ 링크 복사됨!' : '⚠ 복사 실패 — 길게 눌러 복사';
+  if (ok) {
+    shareCopiedT = 1.8;
+    shareBtn.classList.add('copied');
+    shareBtn.textContent = '✅ 링크 복사됨!';
+  } else {
+    // 최후의 수단: 직접 복사할 수 있도록 텍스트를 띄워준다
+    try { window.prompt('아래 내용을 복사해서 친구에게 공유하세요:', text); } catch (e) {}
+  }
 }
 
 shareBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
