@@ -250,6 +250,8 @@ const sfx = {
   shoot: () => beep(680, 0.10, 'triangle', 0.05, -360),
   capture: () => beep(300, 0.12, 'sine', 0.07, 220),
   pop:   () => { beep(880, 0.08, 'square', 0.07, 220); setTimeout(() => beep(1320, 0.07, 'square', 0.05), 60); },
+  // 왕이 거품에 맞을 때: 묵직한 임팩트 + 카랑한 타격음
+  kingHit: () => { beep(200, 0.16, 'sawtooth', 0.09, -120); setTimeout(() => beep(1046, 0.09, 'square', 0.06, 180), 40); setTimeout(() => beep(1568, 0.08, 'square', 0.05), 110); },
   fruit: () => { beep(880, 0.07, 'triangle', 0.06); setTimeout(() => beep(1175, 0.07, 'triangle', 0.06), 70); setTimeout(() => beep(1568, 0.09, 'triangle', 0.06), 140); },
   die:   () => { beep(300, 0.25, 'sawtooth', 0.08, -200); setTimeout(() => beep(160, 0.35, 'sawtooth', 0.08, -100), 180); },
   clear: () => { [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, 0.14, 'square', 0.06), i * 110)); },
@@ -507,7 +509,7 @@ function loadStage(i) {
         game.king = {
           x: c * TILE + TILE / 2 - 28, y: r * TILE, baseY: r * TILE, w: 56, h: 50,
           vx: 70 * DIFFS[game.diff].mult, vy: 0, dir: 1, dt: 0, anim: 0,
-          state: 'walk', capT: 0, hp: 5, maxHp: 5, shootT: 1.6, color: '#ff2f6b',
+          state: 'walk', capT: 0, hp: 5, maxHp: 5, shootT: 1.6, color: '#ff2f6b', hit: 0,
         };
       }
     }
@@ -750,6 +752,7 @@ function updatePlaying(dt) {
   // --- king (stage-3 boss): hover, bob, shoot at the player ---
   if (game.king) {
     const k = game.king; k.dt = dt; k.anim += dt;
+    if (k.hit > 0) k.hit = Math.max(0, k.hit - dt);
     if (k.state === 'walk') {
       k.x += k.vx * dt;
       if (k.x < TILE) { k.x = TILE; k.vx = Math.abs(k.vx); }
@@ -799,13 +802,27 @@ function updatePlaying(dt) {
       }
     }
   }
-  // --- bubble vs king capture (traps it briefly so you can pop it) ---
+  // --- bubble vs king: 1~4번째는 직접 피가 깎이고, 마지막(5번째) 한 방은 거품에 가둠 ---
   if (game.king && game.king.state === 'walk') {
+    const k = game.king;
     for (const b of game.bubbles) {
-      if (b.kind === 'empty' && aabb(b, game.king)) {
-        game.king.state = 'bubbled'; game.king.capT = 3.2;
-        b.life = -1; sfx.capture();
-        burst(game.king.x + game.king.w / 2, game.king.y + game.king.h / 2, COL.cyan, 10);
+      if (b.kind === 'empty' && aabb(b, k)) {
+        b.life = -1; game.shake = 0.3;
+        if (k.hp > 1) {
+          // 아직 피가 남음 → 갇히지 않고 피만 1 깎임
+          k.hp--; sfx.kingHit();
+          k.hit = 0.22;                 // 피격 플래시 타이머
+          game.shake = 0.4;
+          addScore(400, k.x + k.w / 2, k.y);
+          // 강조: 흰 섬광 링 + 색 파편을 크게 터뜨림
+          burst(k.x + k.w / 2, k.y + k.h / 2, '#ffffff', 14);
+          burst(k.x + k.w / 2, k.y + k.h / 2, k.color, 16);
+        } else {
+          // 마지막 한 방: 피가 다 깎이며 거품에 갇힘 (터뜨려야 처치)
+          k.hp = 0;
+          k.state = 'bubbled'; k.capT = 5; sfx.capture();
+          burst(k.x + k.w / 2, k.y + k.h / 2, COL.cyan, 16);
+        }
         break;
       }
     }
@@ -838,16 +855,15 @@ function updatePlaying(dt) {
       instantDeath();                 // touching the king: instant death, ignores lives
       return;
     } else if (k.state === 'bubbled' && aabb(p, k)) {
-      k.hp--; sfx.pop(); game.shake = 0.35;
-      burst(k.x + k.w / 2, k.y + k.h / 2, k.color, 16);
-      if (k.hp <= 0) {
-        addScore(3000, k.x + k.w / 2, k.y);
-        burst(k.x + k.w / 2, k.y + k.h / 2, COL.yellow, 26);
-        game.king = null;             // boss defeated
-      } else {
-        addScore(400, k.x + k.w / 2, k.y);
-        k.state = 'walk'; k.baseY = Math.max(TILE, k.y); k.shootT = 0.6;
-      }
+      // 마지막 거품을 터뜨리면 왕 처치 → 졸병이 남아있어도 즉시 스테이지 클리어
+      addScore(3000, k.x + k.w / 2, k.y);
+      burst(k.x + k.w / 2, k.y + k.h / 2, COL.yellow, 26);
+      game.king = null;               // boss defeated
+      game.shake = 0.5; sfx.pop();
+      game.state = 'STAGECLEAR';
+      game.overlayT = 0;
+      sfx.clear();
+      return;
     }
   }
 
@@ -997,8 +1013,15 @@ function drawEnemy(e) {
 function drawKing(k) {
   const cx = k.x + k.w / 2, cy = k.y + k.h / 2;
   const bob = Math.sin(k.anim * 3) * 2;
+  const flash = k.hit > 0 ? k.hit / 0.22 : 0;   // 1 → 0 으로 감쇠
   ctx.save();
   ctx.translate(cx, cy + bob);
+  // 피격 시 살짝 부풀고 붉은 글로우로 강조
+  if (flash > 0) {
+    const s = 1 + flash * 0.16;
+    ctx.scale(s, s);
+    ctx.shadowColor = '#ff3b5c'; ctx.shadowBlur = 18 * flash;
+  }
   // feet
   ctx.fillStyle = '#5a0a22';
   ctx.beginPath(); ctx.ellipse(-11, k.h / 2 - 4, 7, 4, 0, 0, 7); ctx.fill();
@@ -1008,6 +1031,14 @@ function drawKing(k) {
   grad.addColorStop(0, '#ff9bb5'); grad.addColorStop(0.4, k.color); grad.addColorStop(1, '#7a0d2e');
   ctx.fillStyle = grad;
   ctx.beginPath(); ctx.ellipse(0, 0, k.w / 2, k.h / 2, 0, 0, 7); ctx.fill();
+  ctx.shadowBlur = 0;                    // 글로우는 몸통까지만 적용
+  // 피격 흰 섬광 오버레이
+  if (flash > 0) {
+    ctx.globalAlpha = flash * 0.8;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.ellipse(0, 0, k.w / 2, k.h / 2, 0, 0, 7); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
   // eyes
   ctx.fillStyle = '#fff';
   ctx.beginPath(); ctx.arc(-9, -4, 8, 0, 7); ctx.fill();
@@ -1167,14 +1198,16 @@ function render() {
 
   drawHUD();
 
-  // boss health bar (stage 3)
+  // boss health bar — 왕 바로 아래에 따라다니며 표시 (stage 3)
   if (game.king && game.state === 'PLAYING') {
-    const bw = 200, bx = W / 2 - bw / 2, by = 44;
-    ctx.fillStyle = 'rgba(5,6,15,0.72)'; ctx.fillRect(bx - 6, by - 14, bw + 12, 24);
-    text('KING', bx - 6, by - 4, 7, COL.yellow, 'left');
-    ctx.fillStyle = '#3a0a18'; ctx.fillRect(bx, by, bw, 8);
-    ctx.fillStyle = COL.pink; ctx.fillRect(bx, by, bw * Math.max(0, game.king.hp / game.king.maxHp), 8);
-    ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1; ctx.strokeRect(bx, by, bw, 8);
+    const k = game.king;
+    const bw = 64, bh = 6;
+    let bx = k.x + k.w / 2 - bw / 2;
+    let by = k.y + k.h + 6;            // 왕 머리/몸 바로 아래
+    bx = Math.max(4, Math.min(W - bw - 4, bx));   // 화면 밖으로 안 나가게
+    ctx.fillStyle = '#3a0a18'; ctx.fillRect(bx, by, bw, bh);
+    ctx.fillStyle = COL.pink; ctx.fillRect(bx, by, bw * Math.max(0, k.hp / k.maxHp), bh);
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1; ctx.strokeRect(bx, by, bw, bh);
   }
 
   if (game.state === 'PLAYING' && game.bossWarn > 0) drawBossWarning();
