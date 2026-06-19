@@ -25,8 +25,11 @@
   canvas {
     image-rendering: pixelated;
     image-rendering: crisp-edges;
+    /* 4:3 유지하며 화면에 맞춤. vh는 폴백, dvh는 모바일 주소창을 제외한 실제 보이는 높이 */
     width: min(100vw, 133.333vh);
     height: min(75vw, 100vh);
+    width: min(100vw, 133.333dvh);
+    height: min(75vw, 100dvh);
     box-shadow: 0 0 0 4px #1a1d3a, 0 0 40px rgba(120,60,200,0.45), 0 0 90px rgba(255,60,170,0.25);
     border-radius: 4px;
     touch-action: none;
@@ -41,24 +44,45 @@
     box-sizing: border-box;
     z-index: 10; pointer-events: none;
   }
-  .tc-group { display: flex; gap: 16px; pointer-events: none; }
+  .tc-group { display: flex; gap: 18px; pointer-events: none; }
   .tc-btn {
     pointer-events: auto;
-    width: 70px; height: 70px;
+    position: relative;
+    width: 76px; height: 76px;
+    border: none;
     border-radius: 50%;
-    border: 3px solid rgba(120,225,255,0.7);
-    background: rgba(20,28,60,0.40);
-    color: #cdefff;
+    /* 기본(이동) 색상 — 각 버튼이 CSS 변수로 색을 덮어씀 */
+    --btn: #2b3566; --btn-deep: #121a38;
+    --btn-ring: rgba(120,225,255,0.55); --btn-glow: rgba(80,180,255,0.40);
+    color: #eaf7ff;
     font-family: 'Press Start 2P', monospace;
-    font-size: 22px; line-height: 1;
+    font-size: 24px; line-height: 1;
     display: flex; align-items: center; justify-content: center;
     touch-action: none; user-select: none; -webkit-user-select: none;
     -webkit-tap-highlight-color: transparent;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.45);
+    /* 위쪽 하이라이트 + 아래쪽 깊이감으로 입체적인 유리 버튼 */
+    background:
+      radial-gradient(circle at 38% 28%, rgba(255,255,255,0.40), rgba(255,255,255,0) 46%),
+      radial-gradient(circle at 50% 120%, var(--btn-deep), var(--btn) 62%);
+    box-shadow:
+      0 0 0 2px rgba(255,255,255,0.16) inset,
+      0 0 0 3px var(--btn-ring),
+      0 7px 16px rgba(0,0,0,0.5),
+      0 0 22px var(--btn-glow);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.55);
+    transition: transform .07s ease, box-shadow .12s ease, filter .12s ease;
   }
-  .tc-btn.active { background: rgba(120,225,255,0.5); transform: scale(0.93); }
-  .tc-shoot { border-color: rgba(255,95,176,0.85); color: #ffd0e8; }
-  .tc-jump  { border-color: rgba(95,230,160,0.9); color: #d6ffe8; }
+  .tc-btn:active, .tc-btn.active {
+    transform: translateY(2px) scale(0.92);
+    filter: brightness(1.28) saturate(1.1);
+    box-shadow:
+      0 0 0 2px rgba(255,255,255,0.28) inset,
+      0 0 0 3px var(--btn-ring),
+      0 2px 6px rgba(0,0,0,0.5),
+      0 0 32px var(--btn-glow);
+  }
+  .tc-shoot { --btn: #5a1f43; --btn-deep: #2a0a20; --btn-ring: rgba(255,95,176,0.75); --btn-glow: rgba(255,70,150,0.45); color: #ffe2f1; }
+  .tc-jump  { --btn: #1f5a3e; --btn-deep: #0a2a1c; --btn-ring: rgba(95,230,160,0.8); --btn-glow: rgba(60,220,140,0.45); color: #daffe9; }
   /* "rotate your device" overlay — only on touch devices held in portrait */
   #rotate { display: none; }
   .rot-emoji { font-size: 66px; animation: rothint 1.8s ease-in-out infinite; }
@@ -1166,23 +1190,35 @@ function drawKing(k) {
     ctx.beginPath(); ctx.ellipse(0, 0, k.w / 2, k.h / 2, 0, 0, 7); ctx.fill();
     ctx.globalAlpha = 1;
   }
-  // eyes
-  ctx.fillStyle = '#fff';
-  ctx.beginPath(); ctx.arc(-9, -4, 8, 0, 7); ctx.fill();
-  ctx.beginPath(); ctx.arc(9, -4, 8, 0, 7); ctx.fill();
-  ctx.fillStyle = '#2a0010';
-  ctx.beginPath(); ctx.arc(-9 + k.dir * 2, -3, 3.6, 0, 7); ctx.fill();
-  ctx.beginPath(); ctx.arc(9 + k.dir * 2, -3, 3.6, 0, 7); ctx.fill();
-  // angry brows
-  ctx.strokeStyle = '#2a0010'; ctx.lineWidth = 3; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(-17, -14); ctx.lineTo(-3, -8); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(17, -14); ctx.lineTo(3, -8); ctx.stroke();
-  // fanged grin
-  ctx.fillStyle = '#2a0010';
-  ctx.beginPath(); ctx.ellipse(0, 9, 9, 5, 0, 0, Math.PI); ctx.fill();
-  ctx.fillStyle = '#fff';
-  ctx.beginPath(); ctx.moveTo(-6, 6); ctx.lineTo(-4, 12); ctx.lineTo(-2, 6); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(6, 6); ctx.lineTo(4, 12); ctx.lineTo(2, 6); ctx.fill();
+  if (k.state === 'bubbled') {
+    // 거품에 갇히면 기절한 표정: 눈은 X_X, 입은 멍하게 벌어짐
+    ctx.strokeStyle = '#2a0010'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    for (const ex of [-9, 9]) {
+      ctx.beginPath(); ctx.moveTo(ex - 4, -8); ctx.lineTo(ex + 4, 0); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(ex + 4, -8); ctx.lineTo(ex - 4, 0); ctx.stroke();
+    }
+    // 어질어질한 작은 입
+    ctx.fillStyle = '#2a0010';
+    ctx.beginPath(); ctx.ellipse(0, 10, 4, 3, 0, 0, 7); ctx.fill();
+  } else {
+    // eyes
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(-9, -4, 8, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(9, -4, 8, 0, 7); ctx.fill();
+    ctx.fillStyle = '#2a0010';
+    ctx.beginPath(); ctx.arc(-9 + k.dir * 2, -3, 3.6, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(9 + k.dir * 2, -3, 3.6, 0, 7); ctx.fill();
+    // angry brows
+    ctx.strokeStyle = '#2a0010'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-17, -14); ctx.lineTo(-3, -8); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(17, -14); ctx.lineTo(3, -8); ctx.stroke();
+    // fanged grin
+    ctx.fillStyle = '#2a0010';
+    ctx.beginPath(); ctx.ellipse(0, 9, 9, 5, 0, 0, Math.PI); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.moveTo(-6, 6); ctx.lineTo(-4, 12); ctx.lineTo(-2, 6); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(6, 6); ctx.lineTo(4, 12); ctx.lineTo(2, 6); ctx.fill();
+  }
   // crown
   const cw = k.w * 0.52, top = -k.h / 2 - 1;
   ctx.fillStyle = '#ffd23a';
