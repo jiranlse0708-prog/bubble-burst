@@ -34,55 +34,68 @@
     border-radius: 4px;
     touch-action: none;
   }
-  /* on-screen touch controls — shown only on touch devices */
-  #touch-controls { display: none; }
-  body.touch #touch-controls {
-    display: flex;
-    position: fixed; left: 0; right: 0; bottom: 0;
-    justify-content: space-between; align-items: flex-end;
-    padding: 0 16px calc(16px + env(safe-area-inset-bottom)) 16px;
-    box-sizing: border-box;
-    z-index: 10; pointer-events: none;
-  }
-  .tc-group { display: flex; gap: 18px; pointer-events: none; }
-  .tc-btn {
-    pointer-events: auto;
-    position: relative;
-    width: 76px; height: 76px;
-    border: none;
-    border-radius: 50%;
-    /* 기본(이동) 색상 — 각 버튼이 CSS 변수로 색을 덮어씀 */
-    --btn: #2b3566; --btn-deep: #121a38;
-    --btn-ring: rgba(120,225,255,0.55); --btn-glow: rgba(80,180,255,0.40);
-    color: #eaf7ff;
-    font-family: 'Press Start 2P', monospace;
-    font-size: 24px; line-height: 1;
-    display: flex; align-items: center; justify-content: center;
-    touch-action: none; user-select: none; -webkit-user-select: none;
+  /* ===== 아케이드 게임패드 터치 컨트롤 — 터치 기기에서만 표시 (claude_design: Bubble Burst.html) ===== */
+  #pad { display: none; }
+  body.touch #pad {
+    display: block;
+    position: fixed; inset: 0;
+    z-index: 10;
+    pointer-events: none;            /* 버튼만 터치를 받음 */
+    -webkit-user-select: none; user-select: none;
     -webkit-tap-highlight-color: transparent;
-    /* 위쪽 하이라이트 + 아래쪽 깊이감으로 입체적인 유리 버튼 */
-    background:
-      radial-gradient(circle at 38% 28%, rgba(255,255,255,0.40), rgba(255,255,255,0) 46%),
-      radial-gradient(circle at 50% 120%, var(--btn-deep), var(--btn) 62%);
-    box-shadow:
-      0 0 0 2px rgba(255,255,255,0.16) inset,
-      0 0 0 3px var(--btn-ring),
-      0 7px 16px rgba(0,0,0,0.5),
-      0 0 22px var(--btn-glow);
-    text-shadow: 0 1px 2px rgba(0,0,0,0.55);
-    transition: transform .07s ease, box-shadow .12s ease, filter .12s ease;
+    font-family: 'Press Start 2P', monospace;
   }
-  .tc-btn:active, .tc-btn.active {
-    transform: translateY(2px) scale(0.92);
-    filter: brightness(1.28) saturate(1.1);
-    box-shadow:
-      0 0 0 2px rgba(255,255,255,0.28) inset,
-      0 0 0 3px var(--btn-ring),
-      0 2px 6px rgba(0,0,0,0.5),
-      0 0 32px var(--btn-glow);
+  .pad-btn { pointer-events: auto; -webkit-tap-highlight-color: transparent; }
+
+  /* 좌/우 로커 — 좌하단 */
+  #dpad {
+    position: absolute; left: 5vmin; bottom: calc(7vmin + env(safe-area-inset-bottom));
+    display: flex; gap: 2.4vmin;
   }
-  .tc-shoot { --btn: #5a1f43; --btn-deep: #2a0a20; --btn-ring: rgba(255,95,176,0.75); --btn-glow: rgba(255,70,150,0.45); color: #ffe2f1; }
-  .tc-jump  { --btn: #1f5a3e; --btn-deep: #0a2a1c; --btn-ring: rgba(95,230,160,0.8); --btn-glow: rgba(60,220,140,0.45); color: #daffe9; }
+  .dbtn {
+    pointer-events: auto;
+    width: 17vmin; height: 17vmin; max-width: 92px; max-height: 92px;
+    background: linear-gradient(145deg, #34384d, #14161f);
+    border: 3px solid #0a0b12; border-radius: 16px;
+    box-shadow: inset 0 3px 0 rgba(255,255,255,0.14), 0 5px 0 #05060c, 0 8px 12px rgba(0,0,0,0.5);
+    display: flex; align-items: center; justify-content: center;
+    color: #aeb6d6; font-size: 6vmin;
+    transition: transform .05s, filter .05s, box-shadow .05s;
+  }
+  .dbtn:active, .dbtn.on { filter: brightness(1.6); transform: translateY(4px); box-shadow: inset 0 3px 6px rgba(0,0,0,0.6), 0 1px 0 #05060c; }
+
+  /* 액션 버튼 — 우하단 */
+  #actions {
+    position: absolute; right: 5vmin; bottom: calc(7vmin + env(safe-area-inset-bottom));
+    display: flex; align-items: center; gap: 4vmin;
+  }
+  .rbtn {
+    pointer-events: auto;
+    width: 17vmin; height: 17vmin; max-width: 94px; max-height: 94px;
+    border-radius: 50%;
+    border: 3px solid rgba(0,0,0,0.55);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: #fff; font-size: 4.6vmin; line-height: 1;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+    box-shadow: inset 0 3px 0 rgba(255,255,255,0.35), 0 5px 0 rgba(0,0,0,0.45), 0 8px 12px rgba(0,0,0,0.5);
+    transition: transform .05s, box-shadow .05s, filter .05s;
+  }
+  .rbtn .lbl { font-size: 2vmin; margin-top: 0.6vmin; opacity: 0.85; }
+  .rbtn:active, .rbtn.on { transform: translateY(4px); filter: brightness(1.2); box-shadow: inset 0 3px 6px rgba(0,0,0,0.4), 0 1px 0 rgba(0,0,0,0.45); }
+  #b-shoot { background: radial-gradient(circle at 38% 30%, #ffe27a, #ffb02e 60%, #e07d00); color: #5a3500; }
+  #b-jump  { background: radial-gradient(circle at 38% 30%, #7affc0, #2fe08a 55%, #14a85e); color: #053a22; margin-bottom: 7vmin; }
+
+  /* START / 일시정지 알약 — 하단 중앙 */
+  #b-start {
+    pointer-events: auto;
+    position: absolute; left: 50%; bottom: calc(4vmin + env(safe-area-inset-bottom)); transform: translateX(-50%);
+    padding: 1.4vmin 4vmin;
+    background: linear-gradient(145deg, #3a3d52, #191b27);
+    border: 2px solid #0a0b12; border-radius: 999px;
+    color: #ffe24d; font-size: 2.4vmin; letter-spacing: 1px;
+    box-shadow: inset 0 2px 0 rgba(255,255,255,0.14), 0 3px 0 #05060c, 0 6px 10px rgba(0,0,0,0.5);
+  }
+  #b-start:active { transform: translateX(-50%) translateY(2px); filter: brightness(1.4); }
   /* "rotate your device" overlay — only on touch devices held in portrait */
   #rotate { display: none; }
   .rot-emoji { font-size: 66px; animation: rothint 1.8s ease-in-out infinite; }
@@ -96,47 +109,51 @@
       background: radial-gradient(circle at 50% 45%, #131634 0%, #05060f 75%);
       text-align: center; font-family: 'Press Start 2P', monospace;
     }
-    body.touch #touch-controls { display: none; }
+    body.touch #pad { display: none; }
   }
-  /* 게임오버 / 올클리어 화면의 "친구에게 공유하기" 버튼 (캔버스 위 오버레이) */
-  #share-btn {
-    display: none;
-    position: fixed; z-index: 20;
-    left: 50%; top: 80%;
+  /* ===== SHARE GAME button (게임오버 / 올클리어 화면에서만 표시) ===== */
+  #share {
+    display: none;                       /* .show 가 붙기 전엔 숨김 */
+    position: fixed; left: 50%; top: 62%;
     transform: translate(-50%, -50%);
-    padding: 12px 18px;
+    z-index: 30;
     font-family: 'Press Start 2P', monospace;
-    font-size: 11px; line-height: 1.4;
-    color: #daffe9;
-    background: rgba(20,28,60,0.92);
-    border: 3px solid rgba(95,230,160,0.9);
-    border-radius: 12px;
-    cursor: pointer; white-space: nowrap;
-    -webkit-tap-highlight-color: transparent; user-select: none;
-    box-shadow: 0 4px 18px rgba(0,0,0,0.5), 0 0 18px rgba(95,230,160,0.35);
+    font-size: 11px; letter-spacing: 0.5px;
+    color: #05060f;
+    background: linear-gradient(145deg, #66f0ff, #21c6e6 60%, #119ec0);
+    border: 3px solid #0a2a32; border-radius: 999px;
+    padding: 14px 22px; cursor: pointer;
+    align-items: center; gap: 8px;
+    box-shadow: inset 0 3px 0 rgba(255,255,255,0.45), 0 5px 0 rgba(0,0,0,0.45), 0 8px 16px rgba(0,0,0,0.5);
+    transition: transform .06s, filter .06s, box-shadow .06s;
+    -webkit-tap-highlight-color: transparent;
   }
-  #share-btn:hover { background: rgba(30,42,84,0.95); }
-  #share-btn:active { transform: translate(-50%, -50%) scale(0.94); }
-  #share-btn.copied { border-color: #ffe24d; color: #ffe24d; box-shadow: 0 4px 18px rgba(0,0,0,0.5), 0 0 22px rgba(255,226,77,0.5); }
+  #share.show { display: inline-flex; }
+  #share:active { transform: translate(-50%, calc(-50% + 3px)); filter: brightness(1.1); box-shadow: inset 0 3px 6px rgba(0,0,0,0.35), 0 1px 0 rgba(0,0,0,0.45); }
+  #share svg { width: 15px; height: 15px; }
 </style>
 </head>
 <body>
 <div id="wrap"><canvas id="game" width="640" height="480"></canvas></div>
-<div id="touch-controls">
-  <div class="tc-group tc-left">
-    <button class="tc-btn" data-act="left" aria-label="left">&#9664;</button>
-    <button class="tc-btn" data-act="right" aria-label="right">&#9654;</button>
+<div id="pad" aria-hidden="true">
+  <div id="dpad">
+    <div class="dbtn" id="d-left"  data-key="left"  aria-label="left">&#9664;</div>
+    <div class="dbtn" id="d-right" data-key="right" aria-label="right">&#9654;</div>
   </div>
-  <div class="tc-group tc-right">
-    <button class="tc-btn tc-shoot" data-act="shoot" aria-label="shoot">&#9679;</button>
-    <button class="tc-btn tc-jump" data-act="jump" aria-label="jump">&#9650;</button>
+  <div id="actions">
+    <div class="rbtn" id="b-shoot" data-key="shoot" aria-label="shoot">&#9675;<span class="lbl">SHOOT</span></div>
+    <div class="rbtn" id="b-jump"  data-key="jump"  aria-label="jump">&#8593;<span class="lbl">JUMP</span></div>
   </div>
+  <div class="pad-btn" id="b-start" data-key="enter" aria-label="start">START</div>
 </div>
 <div id="rotate">
   <div class="rot-emoji">&#128241;</div>
   <div class="rot-text">가로로 돌려주세요<span>ROTATE YOUR DEVICE</span></div>
 </div>
-<button id="share-btn">&#128279; 친구에게 공유하기</button>
+<button id="share" aria-label="Share game">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"/></svg>
+  <span id="share-label">SHARE GAME</span>
+</button>
 <script>
 "use strict";
 /* =========================================================================
@@ -430,8 +447,8 @@ addEventListener('keyup', (e) => {
 });
 
 /* --- touch controls (mobile): visible on-screen buttons + tap-to-start ---
-   On touch devices we reveal the #touch-controls overlay: a left/right pad
-   plus jump and shoot buttons. Movement keys are held while pressed; jump and
+   On touch devices we reveal the #pad overlay: a left/right rocker plus
+   shoot/jump action buttons and a START pill. Movement keys are held while pressed; jump and
    shoot fire on press (edge-triggered, same as the keyboard). Menus advance by
    tapping the playfield. Non-touch devices keep keyboard-only and hide the UI. */
 function setupTouch() {
@@ -444,15 +461,26 @@ function setupTouch() {
   const press = (a) => { audio(); if (!keys[a]) pressed[a] = true; keys[a] = true; };
   const release = (a) => { keys[a] = false; };
 
-  document.querySelectorAll('.tc-btn').forEach((btn) => {
-    const act = btn.dataset.act;
-    const down = (e) => { e.preventDefault(); press(act); buzz(act === 'jump' || act === 'shoot' ? 8 : 5); btn.classList.add('active'); };
-    const up = (e) => { e.preventDefault(); release(act); btn.classList.remove('active'); };
-    btn.addEventListener('pointerdown', down);
-    btn.addEventListener('pointerup', up);
-    btn.addEventListener('pointercancel', up);
-    btn.addEventListener('pointerleave', up);
-    btn.addEventListener('contextmenu', (e) => e.preventDefault());
+  // 각 컨트롤은 data-key="<action>" 요소. 포인터 캡처로 손가락이 버튼 밖으로 미끄러져도 정확히 release.
+  document.querySelectorAll('#pad [data-key]').forEach((el) => {
+    const act = el.dataset.key;
+    const down = (e) => {
+      e.preventDefault(); e.stopPropagation();
+      el.classList.add('on');
+      press(act);
+      buzz(act === 'jump' || act === 'shoot' ? 8 : 5);
+      if (el.setPointerCapture && e.pointerId != null) { try { el.setPointerCapture(e.pointerId); } catch (_) {} }
+    };
+    const up = (e) => {
+      if (e) { e.preventDefault(); e.stopPropagation(); }
+      el.classList.remove('on');
+      release(act);
+    };
+    el.addEventListener('pointerdown', down);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+    el.addEventListener('pointerleave', (e) => { if (e.buttons) up(e); });
+    el.addEventListener('contextmenu', (e) => e.preventDefault());
   });
 
   // playfield tap: start/continue on menus, or FIRE during play (so you can
@@ -466,77 +494,64 @@ function setupTouch() {
 setupTouch();
 
 /* =========================================================================
-   SHARE — 게임오버 / 올클리어 화면에서 친구에게 결과 링크 공유
-   모바일은 네이티브 공유 시트, 그 외에는 클립보드로 링크+점수 텍스트 복사.
+   SHARE GAME 버튼 — 게임오버 / 올클리어 화면에서 친구에게 게임 공유
+   모바일은 네이티브 공유 시트(navigator.share), 그 외엔 링크를 클립보드에
+   복사하고 "LINK COPIED!"를 잠깐 표시한다.
    ========================================================================= */
-const shareBtn = document.getElementById('share-btn');
-const SHARE_LABEL = '\u{1F517} 친구에게 공유하기';
-let shareCopiedT = 0;          // "복사됨!" 피드백 남은 시간(초)
+function setupShareButton(opts) {
+  opts = opts || {};
+  const btn   = document.getElementById('share');
+  const label = document.getElementById('share-label');
+  const cfg = {
+    title: opts.title || document.title,
+    text:  opts.text  || '',
+    url:   opts.url   || location.href,
+  };
 
-function shareMessage() {
-  const url = location.href.split('#')[0].split('?')[0];
-  const score = String(game.score).padStart(7, '0');
-  if (game.state === 'WIN') {
-    return `\u{1FAE7} BUBBLE BURST 올클리어! 점수 ${score} · 타임 ${fmtTime(game.clearTime)} \u{1F3C6}\n너도 도전해봐! \u{1F449} ${url}`;
+  function share() {
+    if (navigator.share) {
+      navigator.share({ title: cfg.title, text: cfg.text, url: cfg.url }).catch(() => {});
+    } else if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(cfg.url).then(() => {
+        label.textContent = 'LINK COPIED!';
+        setTimeout(() => { label.textContent = 'SHARE GAME'; }, 1600);
+      }).catch(() => { label.textContent = 'COPY FAILED'; });
+    }
   }
-  return `\u{1FAE7} BUBBLE BURST 점수 ${score} 기록! 너도 깰 수 있어? \u{1F449} ${url}`;
+
+  btn.addEventListener('pointerdown', (e) => e.stopPropagation());
+  btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); share(); });
+
+  return {
+    share,
+    show:   () => { label.textContent = 'SHARE GAME'; btn.classList.add('show'); },
+    hide:   () => btn.classList.remove('show'),
+    toggle: () => btn.classList.toggle('show'),
+  };
 }
 
-async function copyText(text) {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch (e) {
-    // 폴백: 임시 textarea + execCommand
-    try {
-      const ta = document.createElement('textarea');
-      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
-      document.body.appendChild(ta); ta.focus(); ta.select();
-      const ok = document.execCommand('copy');
-      document.body.removeChild(ta);
-      return ok;
-    } catch (e2) { return false; }
-  }
-}
+const shareGame = setupShareButton({
+  title: 'BUBBLE BURST',
+  text:  '🫧 같이 해볼래? 버블 쏘는 아케이드 게임!',
+  url:   location.href,
+});
 
-async function doShare() {
-  const text = shareMessage();
-  const url = location.href.split('#')[0].split('?')[0];
-  // 모바일: 네이티브 공유 시트 우선 (취소 시 그냥 종료)
-  if (document.body.classList.contains('touch') && navigator.share) {
-    try { await navigator.share({ title: 'BUBBLE BURST', text, url }); return; }
-    catch (e) { if (e && e.name === 'AbortError') return; /* 미지원/실패 → 복사로 폴백 */ }
-  }
-  const ok = await copyText(text);
-  if (ok) {
-    shareCopiedT = 1.8;
-    shareBtn.classList.add('copied');
-    shareBtn.textContent = '✅ 링크 복사됨!';
-  } else {
-    // 최후의 수단: 직접 복사할 수 있도록 텍스트를 띄워준다
-    try { window.prompt('아래 내용을 복사해서 친구에게 공유하세요:', text); } catch (e) {}
-  }
-}
-
-shareBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
-shareBtn.addEventListener('click', (e) => { e.stopPropagation(); audio(); doShare(); });
-
-/* 매 프레임 호출: 현재 상태에 맞춰 버튼을 보이고 캔버스 위 적절한 위치에 배치 */
-function updateShareButton(dt) {
-  const show = (game.state === 'GAMEOVER' || game.state === 'WIN');
-  if (show) {
+/* 게임오버/올클리어에서만 버튼을 노출하고, 캔버스 크기에 맞춰 위치를 잡는다.
+   show()/hide()는 상태가 바뀔 때만 호출 — 매 프레임 부르면 "LINK COPIED!"가
+   바로 초기화돼 버리므로 위치 갱신과 표시 토글을 분리한다. */
+let prevShareState = null;
+function updateShareButton() {
+  const btn = document.getElementById('share');
+  const showing = (game.state === 'GAMEOVER' || game.state === 'WIN');
+  if (showing) {
     const r = canvas.getBoundingClientRect();
-    const frac = game.state === 'WIN' ? 0.95 : 0.72;   // WIN은 텍스트가 빽빽해 화면 맨 아래
-    shareBtn.style.left = (r.left + r.width / 2) + 'px';
-    shareBtn.style.top = (r.top + r.height * frac) + 'px';
-    if (shareBtn.style.display !== 'block') shareBtn.style.display = 'block';
-  } else if (shareBtn.style.display !== 'none') {
-    shareBtn.style.display = 'none';
-    shareCopiedT = 0; shareBtn.classList.remove('copied'); shareBtn.textContent = SHARE_LABEL;
+    const frac = game.state === 'WIN' ? 0.95 : 0.72;   // WIN은 텍스트가 빽빽해 더 아래
+    btn.style.left = (r.left + r.width / 2) + 'px';
+    btn.style.top  = (r.top + r.height * frac) + 'px';
   }
-  if (shareCopiedT > 0) {
-    shareCopiedT -= dt;
-    if (shareCopiedT <= 0) { shareBtn.classList.remove('copied'); shareBtn.textContent = SHARE_LABEL; }
+  if (game.state !== prevShareState) {
+    if (showing) shareGame.show(); else shareGame.hide();
+    prevShareState = game.state;
   }
 }
 
@@ -861,8 +876,8 @@ function update(dt) {
   // background music follows the current state/stage
   updateMusic();
 
-  // 게임오버/올클리어 화면의 공유 버튼 표시·위치 갱신
-  updateShareButton(dt);
+  // 게임오버/올클리어 화면의 SHARE GAME 버튼 표시·위치 갱신
+  updateShareButton();
 
   // clear edge-triggers
   for (const k in pressed) pressed[k] = false;
@@ -1649,9 +1664,9 @@ function drawWin() {
     text('HIGH ' + String(game.high).padStart(7, '0'), W / 2, 393, 9, '#9aa3d0', 'center');
   }
 
-  // thank-you + prompt (공유 버튼은 이 아래 화면 맨 밑에 오버레이됨)
+  // thank-you + prompt
   text('THANK YOU FOR PLAYING!', W / 2, 408, 9, COL.green, 'center');
-  if (Math.floor(t * 1.6) % 2 === 0) text('PRESS ENTER', W / 2, 432, 11, COL.ink, 'center');
+  if (Math.floor(t * 1.6) % 2 === 0) text('PRESS ENTER', W / 2, 430, 11, COL.ink, 'center');
 }
 
 function drawTitle() {
