@@ -322,6 +322,13 @@ function makeStripe(base, stripe, size = 16, lw = 6) {
 const wallPat = makeStripe('#b3146e', '#ff48a8');
 const platPat = makeStripe('#0f6f8c', '#3fe0ff');
 
+/* 정적 레벨(벽·발판)은 매 프레임 바뀌지 않으므로, 스테이지 로드 때 오프스크린 캔버스에
+   한 번만 그려두고 프레임마다 통째로 복사한다. (매 프레임 300칸 패턴 채우기 제거) */
+const levelCanvas = document.createElement('canvas');
+levelCanvas.width = W; levelCanvas.height = H;
+const lctx = levelCanvas.getContext('2d');
+function cacheLevel() { lctx.clearRect(0, 0, W, H); drawLevelTo(lctx); }
+
 /* =========================================================================
    AUDIO (tiny synth blips)
    ========================================================================= */
@@ -672,15 +679,15 @@ async function refreshRankTable(highlightName) {
   buildRankTable(list, highlightName);
 }
 
-// 이번 클리어 기록이 랭킹에 오를 자격이 되는지. 자리가 남거나, 10위보다 빠르거나,
-// (저장된 내 닉네임이 이미 올라 있다면) 내 기존 기록보다 빠르면 자격이 있다.
+// 클리어 후 랭킹창을 자동으로 띄울지 판단. "10위 안에 들면 항상" 띄운다:
+//  - 자리가 남았거나(아직 10명 미만), 이번 기록이 현재 10위보다 빠르면 새로 진입,
+//  - 저장된 내 닉네임이 이미 TOP 10에 있으면(이번에 단축 못 했어도) 여전히 10위 안.
 function rankEligible(list) {
   if (!list) return true;   // 읽기 실패 시엔 일단 허용
   const full = list.length >= RANK_MAX;
-  const beatsCutoff = !full || game.clearTime < list[list.length - 1].time;
-  const mine = lastSavedName && list.find((r) => r.name === lastSavedName);
-  const beatsMine = mine && game.clearTime < mine.time;
-  return beatsCutoff || beatsMine;
+  const enters = !full || game.clearTime < list[list.length - 1].time;
+  const alreadyIn = lastSavedName && list.some((r) => r.name === lastSavedName);
+  return enters || alreadyIn;
 }
 
 async function openRanking() {
@@ -972,6 +979,8 @@ function loadStage(i) {
   // boss-stage intro warning
   game.bossWarn = game.king ? 3.2 : 0;
   if (game.king) sfx.alarm();
+
+  cacheLevel();   // 정적 레벨을 오프스크린에 한 번 렌더
 }
 
 function startGame() {
@@ -1415,25 +1424,25 @@ function updatePlaying(dt) {
 /* =========================================================================
    RENDER
    ========================================================================= */
-function drawLevel() {
+function drawLevelTo(c2) {
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       const t = game.grid[r][c];
       if (t === '#') {
-        ctx.fillStyle = wallPat;
-        ctx.save(); ctx.translate(c * TILE, r * TILE);
-        ctx.fillRect(0, 0, TILE, TILE);
-        ctx.restore();
-        ctx.fillStyle = 'rgba(255,255,255,0.08)';
-        ctx.fillRect(c * TILE, r * TILE, TILE, 2);
+        c2.fillStyle = wallPat;
+        c2.save(); c2.translate(c * TILE, r * TILE);
+        c2.fillRect(0, 0, TILE, TILE);
+        c2.restore();
+        c2.fillStyle = 'rgba(255,255,255,0.08)';
+        c2.fillRect(c * TILE, r * TILE, TILE, 2);
       } else if (t === '=') {
         const px = c * TILE, py = r * TILE, hgt = 18;
-        ctx.fillStyle = platPat;
-        ctx.save(); ctx.translate(px, py); ctx.fillRect(0, 0, TILE, hgt); ctx.restore();
-        ctx.fillStyle = 'rgba(255,255,255,0.55)';
-        ctx.fillRect(px, py, TILE, 3);
-        ctx.fillStyle = 'rgba(0,0,0,0.30)';
-        ctx.fillRect(px, py + hgt - 3, TILE, 3);
+        c2.fillStyle = platPat;
+        c2.save(); c2.translate(px, py); c2.fillRect(0, 0, TILE, hgt); c2.restore();
+        c2.fillStyle = 'rgba(255,255,255,0.55)';
+        c2.fillRect(px, py, TILE, 3);
+        c2.fillStyle = 'rgba(0,0,0,0.30)';
+        c2.fillRect(px, py + hgt - 3, TILE, 3);
       }
     }
   }
@@ -1735,8 +1744,8 @@ function render() {
 
   if (game.state === 'TITLE') { drawTitle(); ctx.restore(); return; }
 
-  // playfield
-  drawLevel();
+  // playfield — 정적 레벨은 캐시된 오프스크린 캔버스를 복사 (매 프레임 재드로 제거)
+  ctx.drawImage(levelCanvas, 0, 0);
   for (const f of game.fruits) drawFruit(f);
   for (const b of game.bubbles) if (b.kind === 'empty') drawBubbleShell(b.x, b.y, b.w, b.h, b.anim);
   for (const e of game.enemies) {
