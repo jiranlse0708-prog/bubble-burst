@@ -685,6 +685,19 @@ async function openRanking() {
 }
 function closeRanking() { rankModal.classList.remove('show'); rankOpen = false; }
 
+// WIN 직후 자동 호출. TOP 10 자격이 될 때만 랭킹 모달(닉네임 입력칸)을 자동으로 띄운다.
+// 자격이 안 되면 아무것도 띄우지 않아, 클리어 연출을 가리지 않는다.
+let autoRankTried = false;   // 이번 WIN에서 자동 시도했는지 (중복 방지)
+async function autoPromptRank() {
+  if (game.state !== 'WIN' || game.saved || rankOpen) return;
+  const list = await fetchRanks();
+  const full = list && list.length >= RANK_MAX;
+  const eligible = !full || (list && game.clearTime < list[list.length - 1].time);  // 읽기 실패 시엔 일단 허용
+  if (!eligible) return;
+  // await 사이에 상태가 바뀌었을 수 있으니 다시 확인
+  if (game.state === 'WIN' && !game.saved && !rankOpen) openRanking();
+}
+
 async function commitScore() {
   const name = (nameInput.value || '').trim().replace(/\s+/g, ' ');
   if (!NAME_RE.test(name)) { rankMsg.textContent = '닉네임을 입력하세요 (1~12자)'; return; }
@@ -730,7 +743,11 @@ function updateShareButton() {
     endBtns.style.top  = (r.top + r.height * frac) + 'px';
   }
   if (game.state !== prevShareState) {
-    if (showing) { shareLbl.textContent = 'SHARE GAME'; endBtns.classList.add('show'); }
+    if (showing) {
+      shareLbl.textContent = 'SHARE GAME'; endBtns.classList.add('show');
+      // WIN 진입 시: 클리어 연출을 잠깐 보여준 뒤 자동으로 닉네임 입력을 유도
+      if (game.state === 'WIN' && !autoRankTried) { autoRankTried = true; setTimeout(autoPromptRank, 1400); }
+    }
     else { endBtns.classList.remove('show'); if (rankOpen) closeRanking(); }
     prevShareState = game.state;
   }
@@ -923,6 +940,7 @@ function startGame() {
   game.runT = 0;            // 타이머 리셋
   game.newTimeRecord = false;
   game.saved = false;       // 이번 판 랭킹 등록 여부 초기화
+  autoRankTried = false;    // 자동 닉네임 입력 유도 재무장
   loadStage(0);
   sfx.start();
 }
