@@ -98,6 +98,26 @@
     }
     body.touch #touch-controls { display: none; }
   }
+  /* 게임오버 / 올클리어 화면의 "친구에게 공유하기" 버튼 (캔버스 위 오버레이) */
+  #share-btn {
+    display: none;
+    position: fixed; z-index: 20;
+    left: 50%; top: 80%;
+    transform: translate(-50%, -50%);
+    padding: 12px 18px;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px; line-height: 1.4;
+    color: #daffe9;
+    background: rgba(20,28,60,0.92);
+    border: 3px solid rgba(95,230,160,0.9);
+    border-radius: 12px;
+    cursor: pointer; white-space: nowrap;
+    -webkit-tap-highlight-color: transparent; user-select: none;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.5), 0 0 18px rgba(95,230,160,0.35);
+  }
+  #share-btn:hover { background: rgba(30,42,84,0.95); }
+  #share-btn:active { transform: translate(-50%, -50%) scale(0.94); }
+  #share-btn.copied { border-color: #ffe24d; color: #ffe24d; box-shadow: 0 4px 18px rgba(0,0,0,0.5), 0 0 22px rgba(255,226,77,0.5); }
 </style>
 </head>
 <body>
@@ -116,6 +136,7 @@
   <div class="rot-emoji">&#128241;</div>
   <div class="rot-text">가로로 돌려주세요<span>ROTATE YOUR DEVICE</span></div>
 </div>
+<button id="share-btn">&#128279; 친구에게 공유하기</button>
 <script>
 "use strict";
 /* =========================================================================
@@ -445,6 +466,111 @@ function setupTouch() {
 setupTouch();
 
 /* =========================================================================
+   SHARE — 게임오버 / 올클리어 화면에서 친구에게 결과 링크 공유
+   모바일은 네이티브 공유 시트, 그 외에는 클립보드로 링크+점수 텍스트 복사.
+   ========================================================================= */
+const shareBtn = document.getElementById('share-btn');
+const SHARE_LABEL = '\u{1F517} 친구에게 공유하기';
+let shareCopiedT = 0;          // "복사됨!" 피드백 남은 시간(초)
+
+function shareMessage() {
+  const url = location.href.split('#')[0].split('?')[0];
+  const score = String(game.score).padStart(7, '0');
+  if (game.state === 'WIN') {
+    return `\u{1FAE7} BUBBLE BURST 올클리어! 점수 ${score} · 타임 ${fmtTime(game.clearTime)} \u{1F3C6}\n너도 도전해봐! \u{1F449} ${url}`;
+  }
+  return `\u{1FAE7} BUBBLE BURST 점수 ${score} 기록! 너도 깰 수 있어? \u{1F449} ${url}`;
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (e) {
+    // 폴백: 임시 textarea + execCommand
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch (e2) { return false; }
+  }
+}
+
+async function doShare() {
+  const text = shareMessage();
+  const url = location.href.split('#')[0].split('?')[0];
+  // 모바일: 네이티브 공유 시트 우선 (취소 시 그냥 종료)
+  if (document.body.classList.contains('touch') && navigator.share) {
+    try { await navigator.share({ title: 'BUBBLE BURST', text, url }); return; }
+    catch (e) { if (e && e.name === 'AbortError') return; /* 미지원/실패 → 복사로 폴백 */ }
+  }
+  const ok = await copyText(text);
+  shareCopiedT = 1.8;
+  shareBtn.classList.add('copied');
+  shareBtn.textContent = ok ? '✅ 링크 복사됨!' : '⚠ 복사 실패 — 길게 눌러 복사';
+}
+
+shareBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+shareBtn.addEventListener('click', (e) => { e.stopPropagation(); audio(); doShare(); });
+
+/* 매 프레임 호출: 현재 상태에 맞춰 버튼을 보이고 캔버스 위 적절한 위치에 배치 */
+function updateShareButton(dt) {
+  const show = (game.state === 'GAMEOVER' || game.state === 'WIN');
+  if (show) {
+    const r = canvas.getBoundingClientRect();
+    const frac = game.state === 'WIN' ? 0.95 : 0.72;   // WIN은 텍스트가 빽빽해 화면 맨 아래
+    shareBtn.style.left = (r.left + r.width / 2) + 'px';
+    shareBtn.style.top = (r.top + r.height * frac) + 'px';
+    if (shareBtn.style.display !== 'block') shareBtn.style.display = 'block';
+  } else if (shareBtn.style.display !== 'none') {
+    shareBtn.style.display = 'none';
+    shareCopiedT = 0; shareBtn.classList.remove('copied'); shareBtn.textContent = SHARE_LABEL;
+  }
+  if (shareCopiedT > 0) {
+    shareCopiedT -= dt;
+    if (shareCopiedT <= 0) { shareBtn.classList.remove('copied'); shareBtn.textContent = SHARE_LABEL; }
+  }
+}
+
+/* --- gamepad: 매 프레임 poll() 해서 버튼/스틱을 액션으로 변환, 엣지에서 콜백 발화 ---
+   표준 매핑 기준: D-pad/왼쪽 스틱=이동, A(0)·위=점프, X/B/Y·숄더=발사,
+   Start(9)=enter(메뉴 진행), Select(8)=mute. */
+function setupGamepad({ onPress, onRelease } = {}) {
+  let prev = {};
+  const DEAD = 0.45;            // 스틱 데드존
+  const down = (b, i) => !!(b[i] && b[i].pressed);
+
+  function poll() {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    const now = {};
+    const set = (a) => { now[a] = true; };
+    for (const pad of pads) {
+      if (!pad) continue;
+      const b = pad.buttons, ax = pad.axes;
+      const h = ax.length > 0 ? ax[0] : 0, v = ax.length > 1 ? ax[1] : 0;
+      if (down(b, 14) || h < -DEAD) set('left');
+      if (down(b, 15) || h >  DEAD) set('right');
+      if (down(b, 0) || down(b, 12) || v < -DEAD) set('jump');
+      if (down(b, 2) || down(b, 1) || down(b, 3) || down(b, 5) || down(b, 7)) set('shoot');
+      if (down(b, 9)) set('enter');
+      if (down(b, 8)) set('mute');
+    }
+    for (const a in now) if (!prev[a] && onPress) onPress(a);
+    for (const a in prev) if (!now[a] && onRelease) onRelease(a);
+    prev = now;
+  }
+  return { poll };
+}
+
+const gp = setupGamepad({
+  onPress:   (action) => { audio(); if (!keys[action]) pressed[action] = true; keys[action] = true; },
+  onRelease: (action) => { keys[action] = false; },
+});
+
+/* =========================================================================
    GAME STATE
    ========================================================================= */
 const game = {
@@ -729,6 +855,9 @@ function update(dt) {
 
   // background music follows the current state/stage
   updateMusic();
+
+  // 게임오버/올클리어 화면의 공유 버튼 표시·위치 갱신
+  updateShareButton(dt);
 
   // clear edge-triggers
   for (const k in pressed) pressed[k] = false;
@@ -1515,9 +1644,9 @@ function drawWin() {
     text('HIGH ' + String(game.high).padStart(7, '0'), W / 2, 393, 9, '#9aa3d0', 'center');
   }
 
-  // thank-you + prompt
-  text('THANK YOU FOR PLAYING!', W / 2, 424, 9, COL.green, 'center');
-  if (Math.floor(t * 1.6) % 2 === 0) text('PRESS ENTER', W / 2, 456, 11, COL.ink, 'center');
+  // thank-you + prompt (공유 버튼은 이 아래 화면 맨 밑에 오버레이됨)
+  text('THANK YOU FOR PLAYING!', W / 2, 408, 9, COL.green, 'center');
+  if (Math.floor(t * 1.6) % 2 === 0) text('PRESS ENTER', W / 2, 432, 11, COL.ink, 'center');
 }
 
 function drawTitle() {
@@ -1561,6 +1690,7 @@ function frame(now) {
   let dt = (now - last) / 1000;
   last = now;
   if (dt > 0.05) dt = 0.05;  // clamp (tab switches etc.)
+  gp.poll();                            // 게임패드 입력 폴링 (pressed 초기화 전에 호출)
   if (!blockedPortrait()) update(dt);   // freeze while the rotate overlay is up
   render();
   requestAnimationFrame(frame);
