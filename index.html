@@ -117,11 +117,11 @@ const W = 640, H = 480, TILE = 32, COLS = 20, ROWS = 15;
 /* ---- tuning -------------------------------------------------------------- */
 const GRAVITY      = 1600;   // px/s^2
 const MOVE_SPEED   = 165;    // player horizontal px/s
-const JUMP_VEL     = 600;    // player jump impulse px/s  (clears ~3.4 tiles)
+const JUMP_VEL     = 510;    // player jump impulse px/s  (clears ~2.5 tiles)
 const BUBBLE_SPEED = 320;    // bubble fly px/s
 const BUBBLE_FLY   = 0.45;   // seconds the bubble travels horizontally
 const BUBBLE_RISE  = 48;     // float-up px/s after fly phase
-const BUBBLE_LIFE  = 9;      // seconds before an empty bubble pops
+const BUBBLE_LIFE  = 5;      // seconds before an empty bubble pops
 const SHOOT_CD     = 0.30;   // seconds between shots
 const MAX_BUBBLES  = 6;
 const CAPTURE_TIME = 6;      // seconds a captured enemy stays bubbled
@@ -770,12 +770,18 @@ function updatePlaying(dt) {
       }
     } else if (k.state === 'bubbled') {
       k.capT -= dt;
-      k.y -= BUBBLE_RISE * 0.6 * dt;
-      k.x += Math.sin(k.anim * 2) * 12 * dt;
+      // 천장으로 떠오르지 않고, 점프로 닿을 수 있는 높이로 내려와 좌우로 살랑이며 머문다
+      const hoverY = H - TILE * 3.5;            // 바닥에서 약 3.5타일 위 → 점프 도달 가능
+      k.y += (hoverY - k.y) * Math.min(1, dt * 3);
+      k.x += Math.sin(k.anim * 2) * 24 * dt;
       if (k.x < TILE) k.x = TILE;
       if (k.x + k.w > W - TILE) k.x = W - TILE - k.w;
-      if (k.y < TILE) k.y = TILE;
-      if (k.capT <= 0) { k.state = 'walk'; k.baseY = Math.max(TILE, k.y); k.shootT = 0.8; }
+      // 시간이 다 되면 거품이 터지며 왕이 풀려난다 (HP 1로 복귀 → 다시 가둬서 터뜨려야 처치)
+      if (k.capT <= 0) {
+        k.state = 'walk'; k.baseY = k.y; k.hp = 1; k.shootT = 0.8;
+        sfx.pop();
+        burst(k.x + k.w / 2, k.y + k.h / 2, COL.cyan, 14);
+      }
     }
   }
 
