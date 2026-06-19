@@ -121,7 +121,7 @@ const STAGE2 = [
 ];
 const STAGE3 = [
   "####################",
-  "#..................#",
+  "#........K.........#",
   "#..................#",
   "#..................#",
   "#.....e.....e......#",
@@ -261,6 +261,8 @@ const game = {
   bubbles: [],
   fruits: [],
   particles: [],
+  king: null,      // stage-3 boss (null when none / defeated)
+  shots: [],       // king projectiles
   t: 0,            // global time
   overlayT: 0,     // timer for stage clear / messages
   shootCd: 0,
@@ -321,11 +323,13 @@ function aabb(a, b) {
    ========================================================================= */
 function loadStage(i) {
   const def = STAGES[i];
-  game.grid = def.map.map((row) => row.split('').map((ch) => (ch === 'e' || ch === 'P') ? '.' : ch));
+  game.grid = def.map.map((row) => row.split('').map((ch) => (ch === 'e' || ch === 'P' || ch === 'K') ? '.' : ch));
   game.enemies = [];
   game.bubbles = [];
   game.fruits = [];
   game.particles = [];
+  game.shots = [];
+  game.king = null;
   game.shootCd = 0;
   const speed = def.speed * DIFFS[game.diff].mult;
   for (let r = 0; r < ROWS; r++) {
@@ -343,7 +347,14 @@ function loadStage(i) {
           vx: 0, vy: 0, dir: Math.random() < 0.5 ? -1 : 1,
           grounded: false, dt: 0, state: 'walk', speed,
           color: def.color, capT: 0, anim: Math.random() * 6, mad: false,
+          canDrop: i === 1, dropping: 0,   // stage 2 enemies dive down through platforms
         });
+      } else if (ch === 'K') {
+        game.king = {
+          x: c * TILE + TILE / 2 - 28, y: r * TILE, baseY: r * TILE, w: 56, h: 50,
+          vx: 70 * DIFFS[game.diff].mult, vy: 0, dir: 1, dt: 0, anim: 0,
+          state: 'walk', capT: 0, hp: 5, maxHp: 5, shootT: 1.6, color: '#ff2f6b',
+        };
       }
     }
   }
@@ -370,7 +381,18 @@ function loseLife() {
   } else {
     const p = game.player;
     p.x = p.startX; p.y = p.startY; p.vx = 0; p.vy = 0; p.inv = RESPAWN_INV; p.dir = 1;
+    game.shots = [];   // clear boss shots on respawn
   }
+}
+
+// touching the king kills instantly, regardless of remaining lives
+function instantDeath() {
+  game.lives = 0;
+  game.shake = 0.5;
+  sfx.die();
+  if (game.score > game.high) { game.high = game.score; localStorage.setItem('bb_high', game.high); }
+  game.state = 'GAMEOVER';
+  game.overlayT = 0;
 }
 
 function nextStage() {
@@ -501,13 +523,24 @@ function updatePlaying(dt) {
       if (Math.random() < 0.012) e.dir = (p.x > e.x ? 1 : -1);
       moveX(e);
       if (e.hitWall) e.dir *= -1;
-      moveY(e, true);
-      // edge guard: turn if no ground ahead while grounded
-      if (e.grounded) {
-        const footX = e.dir > 0 ? e.x + e.w + 2 : e.x - 2;
-        const fc = Math.floor(footX / TILE);
-        const fr = Math.floor((e.y + e.h + 3) / TILE);
-        if (!isGroundTile(fc, fr)) e.dir *= -1;
+      if (e.dropping > 0) {
+        // diving off a bar: fall through one-way platforms until landing
+        e.dropping -= dt;
+        moveY(e, false);
+        if (e.grounded) e.dropping = 0;
+      } else {
+        moveY(e, true);
+        if (e.grounded) {
+          const footX = e.dir > 0 ? e.x + e.w + 2 : e.x - 2;
+          const fc = Math.floor(footX / TILE);
+          const fr = Math.floor((e.y + e.h + 3) / TILE);
+          const onPlat = isPlat(Math.floor((e.x + e.w / 2) / TILE), Math.floor((e.y + e.h + 1) / TILE));
+          if (e.canDrop && onPlat && Math.random() < 0.009) {
+            e.dropping = 0.45; e.y += 2;   // jump off the bar and descend
+          } else if (!isGroundTile(fc, fr)) {
+            e.dir *= -1;
+          }
+        }
       }
     } else if (e.state === 'bubbled') {
       e.capT -= dt;
@@ -522,6 +555,44 @@ function updatePlaying(dt) {
     }
   }
 
+  // --- king (stage-3 boss): hover, bob, shoot at the player ---
+  if (game.king) {
+    const k = game.king; k.dt = dt; k.anim += dt;
+    if (k.state === 'walk') {
+      k.x += k.vx * dt;
+      if (k.x < TILE) { k.x = TILE; k.vx = Math.abs(k.vx); }
+      if (k.x + k.w > W - TILE) { k.x = W - TILE - k.w; k.vx = -Math.abs(k.vx); }
+      k.dir = k.vx > 0 ? 1 : -1;
+      k.y = k.baseY + Math.sin(k.anim * 1.5) * 16;
+      k.shootT -= dt;
+      if (k.shootT <= 0) {
+        k.shootT = 1.5 / DIFFS[game.diff].mult;
+        const sx = k.x + k.w / 2, sy = k.y + k.h / 2;
+        const ang = Math.atan2((p.y + p.h / 2) - sy, (p.x + p.w / 2) - sx);
+        const sp = 210 * DIFFS[game.diff].mult;
+        game.shots.push({ x: sx - 7, y: sy - 7, w: 14, h: 14, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, life: 4, anim: 0 });
+        sfx.shoot();
+      }
+    } else if (k.state === 'bubbled') {
+      k.capT -= dt;
+      k.y -= BUBBLE_RISE * 0.6 * dt;
+      k.x += Math.sin(k.anim * 2) * 12 * dt;
+      if (k.x < TILE) k.x = TILE;
+      if (k.x + k.w > W - TILE) k.x = W - TILE - k.w;
+      if (k.y < TILE) k.y = TILE;
+      if (k.capT <= 0) { k.state = 'walk'; k.baseY = Math.max(TILE, k.y); k.shootT = 0.8; }
+    }
+  }
+
+  // --- king projectiles ---
+  for (const s of game.shots) {
+    s.anim += dt;
+    s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt;
+    if (isWall(Math.floor((s.x + s.w / 2) / TILE), Math.floor((s.y + s.h / 2) / TILE))) s.life = -1;
+    if (p.inv <= 0 && aabb(p, s)) { s.life = -1; loseLife(); }   // shot hit: -1 life
+  }
+  game.shots = game.shots.filter((s) => s.life > 0);
+
   // --- bubble vs enemy capture ---
   for (const b of game.bubbles) {
     if (b.kind !== 'empty') continue;
@@ -532,6 +603,17 @@ function updatePlaying(dt) {
         b.life = -1; // consume bubble
         sfx.capture();
         burst(e.x + e.w / 2, e.y + e.h / 2, COL.cyan, 6);
+        break;
+      }
+    }
+  }
+  // --- bubble vs king capture (traps it briefly so you can pop it) ---
+  if (game.king && game.king.state === 'walk') {
+    for (const b of game.bubbles) {
+      if (b.kind === 'empty' && aabb(b, game.king)) {
+        game.king.state = 'bubbled'; game.king.capT = 3.2;
+        b.life = -1; sfx.capture();
+        burst(game.king.x + game.king.w / 2, game.king.y + game.king.h / 2, COL.cyan, 10);
         break;
       }
     }
@@ -557,6 +639,26 @@ function updatePlaying(dt) {
     }
   }
 
+  // --- player vs king ---
+  if (game.king) {
+    const k = game.king;
+    if (k.state === 'walk' && p.inv <= 0 && aabb(p, k)) {
+      instantDeath();                 // touching the king: instant death, ignores lives
+      return;
+    } else if (k.state === 'bubbled' && aabb(p, k)) {
+      k.hp--; sfx.pop(); game.shake = 0.35;
+      burst(k.x + k.w / 2, k.y + k.h / 2, k.color, 16);
+      if (k.hp <= 0) {
+        addScore(3000, k.x + k.w / 2, k.y);
+        burst(k.x + k.w / 2, k.y + k.h / 2, COL.yellow, 26);
+        game.king = null;             // boss defeated
+      } else {
+        addScore(400, k.x + k.w / 2, k.y);
+        k.state = 'walk'; k.baseY = Math.max(TILE, k.y); k.shootT = 0.6;
+      }
+    }
+  }
+
   // --- fruits ---
   for (const f of game.fruits) {
     f.dt = dt; f.life -= dt;
@@ -565,8 +667,8 @@ function updatePlaying(dt) {
   }
   game.fruits = game.fruits.filter((f) => f.life > 0);
 
-  // --- win check ---
-  if (game.enemies.length === 0 && game.state === 'PLAYING') {
+  // --- win check (stage 3 also requires the king defeated) ---
+  if (game.enemies.length === 0 && !game.king && game.state === 'PLAYING') {
     game.state = 'STAGECLEAR';
     game.overlayT = 0;
     sfx.clear();
@@ -600,46 +702,73 @@ function drawLevel() {
   }
 }
 
-/* the player creature — an original round slime with big eyes + crest */
-function drawCreature(e, color, dir, expr) {
+/* the player creature — a cute round baby dinosaur */
+function drawCreature(e, color, dir) {
   const cx = e.x + e.w / 2, by = e.y + e.h;
-  const bob = Math.sin(e.anim * 8) * (Math.abs(e.vx) > 1 ? 1.2 : 0.6);
+  const moving = Math.abs(e.vx) > 1;
+  const bob = Math.sin(e.anim * 8) * (moving ? 1.4 : 0.7);
   ctx.save();
   ctx.translate(cx, by + bob);
-  // feet
-  ctx.fillStyle = '#2c8b5e';
-  ctx.beginPath(); ctx.ellipse(-6, -2, 5, 3.5, 0, 0, 7); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(6, -2, 5, 3.5, 0, 0, 7); ctx.fill();
-  // body
-  const rad = e.w / 2 + 1;
-  const grad = ctx.createLinearGradient(0, -e.h, 0, 0);
-  grad.addColorStop(0, color); grad.addColorStop(1, '#2fae73');
-  ctx.fillStyle = grad;
+  ctx.scale(dir, 1);            // face travel direction
+  const dark = '#2f9e63', mid = color, light = '#86f0ad';
+  const Hh = e.h, Ww = e.w;
+
+  // tail (curls out behind)
+  ctx.fillStyle = mid;
   ctx.beginPath();
-  ctx.moveTo(-rad, -2);
-  ctx.quadraticCurveTo(-rad, -e.h - 2, 0, -e.h - 2);
-  ctx.quadraticCurveTo(rad, -e.h - 2, rad, -2);
-  ctx.quadraticCurveTo(rad, 2, 0, 2);
-  ctx.quadraticCurveTo(-rad, 2, -rad, -2);
+  ctx.moveTo(-Ww * 0.30, -3);
+  ctx.quadraticCurveTo(-Ww * 0.95, -2, -Ww * 0.86, -Hh * 0.5);
+  ctx.quadraticCurveTo(-Ww * 0.66, -Hh * 0.26, -Ww * 0.30, -Hh * 0.3);
   ctx.fill();
-  // crest spikes
-  ctx.fillStyle = COL.cyan;
-  for (let i = -1; i <= 1; i++) {
+
+  // back plates (cute rounded fins)
+  ctx.fillStyle = '#ffce3a';
+  for (const [px, py] of [[-Ww * 0.16, -Hh * 0.98], [-Ww * 0.46, -Hh * 0.82], [-Ww * 0.70, -Hh * 0.52]]) {
     ctx.beginPath();
-    ctx.moveTo(i * 7 - 3, -e.h - 1); ctx.lineTo(i * 7, -e.h - 8); ctx.lineTo(i * 7 + 3, -e.h - 1);
-    ctx.fill();
+    ctx.moveTo(px - 4, py + 4); ctx.quadraticCurveTo(px, py - 6, px + 4, py + 4);
+    ctx.closePath(); ctx.fill();
   }
-  // belly
-  ctx.fillStyle = 'rgba(255,255,255,0.30)';
-  ctx.beginPath(); ctx.ellipse(0, -6, rad * 0.55, e.h * 0.32, 0, 0, 7); ctx.fill();
-  // eyes
-  const ex = dir * 3;
+
+  // body (big egg)
+  const grad = ctx.createLinearGradient(0, -Hh * 1.1, 0, 0);
+  grad.addColorStop(0, light); grad.addColorStop(0.5, mid); grad.addColorStop(1, dark);
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.ellipse(0, -Hh * 0.5, Ww * 0.62, Hh * 0.62, 0, 0, 7); ctx.fill();
+
+  // belly patch
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.beginPath(); ctx.ellipse(2, -Hh * 0.38, Ww * 0.32, Hh * 0.4, 0, 0, 7); ctx.fill();
+
+  // snout bump
+  ctx.fillStyle = mid;
+  ctx.beginPath(); ctx.ellipse(Ww * 0.42, -Hh * 0.58, Ww * 0.3, Hh * 0.26, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#1d6e42';
+  ctx.beginPath(); ctx.arc(Ww * 0.62, -Hh * 0.62, 1.5, 0, 7); ctx.fill();
+
+  // little arm
+  ctx.fillStyle = mid;
+  ctx.beginPath(); ctx.ellipse(Ww * 0.44, -Hh * 0.34, 3.5, 5, -0.3, 0, 7); ctx.fill();
+
+  // legs + toes
+  const sw = moving ? Math.sin(e.anim * 8) * 2 : 0;
+  ctx.fillStyle = dark;
+  ctx.beginPath(); ctx.ellipse(-5 + sw, -3, 5, 5, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(6 - sw, -3, 5, 5, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#1d6e42';
+  for (const tx of [-8, -3, 4, 9]) { ctx.beginPath(); ctx.arc(tx, 0, 1.3, 0, 7); ctx.fill(); }
+
+  // big cute eye
   ctx.fillStyle = '#fff';
-  ctx.beginPath(); ctx.ellipse(-6 + ex, -e.h + 9, 5, 6, 0, 0, 7); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(6 + ex, -e.h + 9, 5, 6, 0, 0, 7); ctx.fill();
-  ctx.fillStyle = '#16203a';
-  ctx.beginPath(); ctx.arc(-6 + ex + dir * 1.5, -e.h + 10, 2.4, 0, 7); ctx.fill();
-  ctx.beginPath(); ctx.arc(6 + ex + dir * 1.5, -e.h + 10, 2.4, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(Ww * 0.2, -Hh * 0.8, 6.5, 7.5, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#15351f';
+  ctx.beginPath(); ctx.arc(Ww * 0.27, -Hh * 0.78, 3.4, 0, 7); ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(Ww * 0.31, -Hh * 0.82, 1.4, 0, 7); ctx.fill();
+
+  // cheek blush
+  ctx.fillStyle = 'rgba(255,120,150,0.5)';
+  ctx.beginPath(); ctx.ellipse(Ww * 0.1, -Hh * 0.58, 3, 2, 0, 0, 7); ctx.fill();
+
   ctx.restore();
 }
 
@@ -669,6 +798,67 @@ function drawEnemy(e) {
   ctx.strokeStyle = '#1a1030'; ctx.lineWidth = 2; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(-9, -8); ctx.lineTo(-2, -5); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(9, -8); ctx.lineTo(2, -5); ctx.stroke();
+  ctx.restore();
+}
+
+/* the KING boss — big crowned, fanged blob */
+function drawKing(k) {
+  const cx = k.x + k.w / 2, cy = k.y + k.h / 2;
+  const bob = Math.sin(k.anim * 3) * 2;
+  ctx.save();
+  ctx.translate(cx, cy + bob);
+  // feet
+  ctx.fillStyle = '#5a0a22';
+  ctx.beginPath(); ctx.ellipse(-11, k.h / 2 - 4, 7, 4, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(11, k.h / 2 - 4, 7, 4, 0, 0, 7); ctx.fill();
+  // body
+  const grad = ctx.createRadialGradient(-7, -9, 4, 0, 0, k.w / 2 + 6);
+  grad.addColorStop(0, '#ff9bb5'); grad.addColorStop(0.4, k.color); grad.addColorStop(1, '#7a0d2e');
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.ellipse(0, 0, k.w / 2, k.h / 2, 0, 0, 7); ctx.fill();
+  // eyes
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(-9, -4, 8, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(9, -4, 8, 0, 7); ctx.fill();
+  ctx.fillStyle = '#2a0010';
+  ctx.beginPath(); ctx.arc(-9 + k.dir * 2, -3, 3.6, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(9 + k.dir * 2, -3, 3.6, 0, 7); ctx.fill();
+  // angry brows
+  ctx.strokeStyle = '#2a0010'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-17, -14); ctx.lineTo(-3, -8); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(17, -14); ctx.lineTo(3, -8); ctx.stroke();
+  // fanged grin
+  ctx.fillStyle = '#2a0010';
+  ctx.beginPath(); ctx.ellipse(0, 9, 9, 5, 0, 0, Math.PI); ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.moveTo(-6, 6); ctx.lineTo(-4, 12); ctx.lineTo(-2, 6); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(6, 6); ctx.lineTo(4, 12); ctx.lineTo(2, 6); ctx.fill();
+  // crown
+  const cw = k.w * 0.52, top = -k.h / 2 - 1;
+  ctx.fillStyle = '#ffd23a';
+  ctx.beginPath();
+  ctx.moveTo(-cw / 2, top);
+  ctx.lineTo(-cw / 2, top - 11); ctx.lineTo(-cw / 4, top - 3);
+  ctx.lineTo(0, top - 14); ctx.lineTo(cw / 4, top - 3);
+  ctx.lineTo(cw / 2, top - 11); ctx.lineTo(cw / 2, top);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#ff3b5c';
+  ctx.beginPath(); ctx.arc(0, top - 4, 2.4, 0, 7); ctx.fill();
+  ctx.restore();
+  if (k.state === 'bubbled') drawBubbleShell(k.x - 6, k.y - 6, k.w + 12, k.h + 12, k.anim);
+}
+
+/* king's fireball projectile */
+function drawShot(s) {
+  const cx = s.x + s.w / 2, cy = s.y + s.h / 2, r = s.w / 2;
+  ctx.save();
+  ctx.translate(cx, cy);
+  const g = ctx.createRadialGradient(0, 0, 1, 0, 0, r + 2);
+  g.addColorStop(0, '#fff'); g.addColorStop(0.4, '#ffd23a'); g.addColorStop(1, '#ff4a2a');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,120,40,0.6)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(0, 0, r + 2 + Math.sin(s.anim * 20), 0, 7); ctx.stroke();
   ctx.restore();
 }
 
@@ -768,6 +958,10 @@ function render() {
       drawEnemy(e);
     }
   }
+  // king + its shots
+  if (game.king) drawKing(game.king);
+  for (const s of game.shots) drawShot(s);
+
   // player (blink while invincible)
   const p = game.player;
   if (p && !(p.inv > 0 && Math.floor(game.t * 12) % 2 === 0)) drawCreature(p, COL.green, p.dir);
@@ -779,6 +973,16 @@ function render() {
   }
 
   drawHUD();
+
+  // boss health bar (stage 3)
+  if (game.king && game.state === 'PLAYING') {
+    const bw = 200, bx = W / 2 - bw / 2, by = 44;
+    ctx.fillStyle = 'rgba(5,6,15,0.72)'; ctx.fillRect(bx - 6, by - 14, bw + 12, 24);
+    text('KING', bx - 6, by - 4, 7, COL.yellow, 'left');
+    ctx.fillStyle = '#3a0a18'; ctx.fillRect(bx, by, bw, 8);
+    ctx.fillStyle = COL.pink; ctx.fillRect(bx, by, bw * Math.max(0, game.king.hp / game.king.maxHp), 8);
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1; ctx.strokeRect(bx, by, bw, 8);
+  }
 
   if (game.state === 'STAGECLEAR') overlayBox('STAGE CLEAR!', STAGES[game.stage].name, COL.cyan);
   if (game.state === 'GAMEOVER') overlayBox('GAME OVER', 'PRESS ENTER', COL.pink);
