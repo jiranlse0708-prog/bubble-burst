@@ -144,6 +144,8 @@
   .rank-table th { color: #8b93c0; font-size: 8px; text-align: left; padding: 6px 5px; border-bottom: 2px solid #2a2d50; }
   .rank-table th.num, .rank-table td.num { text-align: center; width: 34px; }
   .rank-table th.rt, .rank-table td.rt { text-align: right; }
+  .rank-table th.md, .rank-table td.md { text-align: center; font-size: 7px; white-space: nowrap; }
+  .rank-table td.md { color: #5b6498; }
   .rank-table td { color: #cfd6ff; font-size: 9px; padding: 8px 5px; border-bottom: 1px solid #1c1f3e; }
   .rank-table td.num { color: #38e6ff; }
   .rank-table tr.me td { color: #ffe24d; background: rgba(255,226,77,0.10); }
@@ -611,35 +613,62 @@ const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsI
 const RANK_TABLE = 'bubble_burst_ranking';
 const SUPA_HEADERS = { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY };
 
+// diff(난이도) 컬럼 존재 여부 캐시. null=미확인, true=있음, false=없음.
+// 컬럼이 없어도(=아직 마이그레이션 전) 랭킹이 깨지지 않도록 select/insert를 자동 폴백한다.
+let diffColExists = null;
+const colMissing = (t) => t.includes('diff') && t.includes('does not exist');
+
 async function fetchRanks() {
   try {
     // anon 키로는 UPDATE가 막혀 있어 기록 갱신은 '새 기록 INSERT'로 처리한다.
     // 그래서 같은 닉네임이 여러 행일 수 있어, 넉넉히 받아 가장 빠른 행만 남긴다(time asc 정렬이라 첫 등장이 최고).
-    const res = await fetch(
-      SUPA_URL + '/rest/v1/' + RANK_TABLE + '?select=name,time_sec,score&order=time_sec.asc&limit=200',
-      { headers: SUPA_HEADERS }
-    );
-    if (!res.ok) return null;
+    const url = (withDiff) => SUPA_URL + '/rest/v1/' + RANK_TABLE +
+      '?select=name,time_sec,score' + (withDiff ? ',diff' : '') + '&order=time_sec.asc&limit=200';
+    const useDiff = diffColExists !== false;
+    let res = await fetch(url(useDiff), { headers: SUPA_HEADERS });
+    if (!res.ok) {
+      if (!useDiff) return null;
+      const t = await res.text();
+      if (!colMissing(t)) return null;
+      diffColExists = false;                       // diff 컬럼 없음 → 컬럼 없이 재시도
+      res = await fetch(url(false), { headers: SUPA_HEADERS });
+      if (!res.ok) return null;
+    } else if (useDiff) {
+      diffColExists = true;
+    }
     const rows = await res.json();
     const seen = new Set();
     const best = [];
     for (const r of rows) {
       if (seen.has(r.name)) continue;       // 같은 닉네임은 최고(최단) 기록만
       seen.add(r.name);
-      best.push({ name: r.name, time: r.time_sec, score: r.score });
+      best.push({ name: r.name, time: r.time_sec, score: r.score, diff: r.diff || null });
       if (best.length >= RANK_MAX) break;   // TOP 10만
     }
     return best;
   } catch (_) { return null; }
 }
 async function insertRank(rec) {
-  // 반환값: { ok, status } — 409면 닉네임 중복(UNIQUE 위반)
+  // 반환값: { ok, status }
+  const post = (body) => fetch(SUPA_URL + '/rest/v1/' + RANK_TABLE, {
+    method: 'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }, SUPA_HEADERS),
+    body: JSON.stringify(body),
+  });
   try {
-    const res = await fetch(SUPA_URL + '/rest/v1/' + RANK_TABLE, {
-      method: 'POST',
-      headers: Object.assign({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }, SUPA_HEADERS),
-      body: JSON.stringify({ name: rec.name, time_sec: rec.time, score: rec.score }),
-    });
+    const body = { name: rec.name, time_sec: rec.time, score: rec.score };
+    if (rec.diff && diffColExists !== false) body.diff = rec.diff;
+    let res = await post(body);
+    if (!res.ok && body.diff) {
+      const t = await res.text();
+      if (colMissing(t)) {                         // diff 컬럼 없음 → 컬럼 없이 재시도
+        diffColExists = false;
+        delete body.diff;
+        res = await post(body);
+      }
+    } else if (res.ok && body.diff) {
+      diffColExists = true;
+    }
     return { ok: res.ok, status: res.status };
   } catch (_) { return { ok: false, status: 0 }; }
 }
@@ -663,18 +692,22 @@ function buildRankTable(list, highlightName) {
     rankBody.innerHTML = '<div class="rank-empty">아직 기록이 없어요.<br/>첫 주자가 되어보세요!</div>';
     return;
   }
+  const DIFF_VIEW = { EASY: ['EASY', '#7affc0'], NORMAL: ['NORMAL', '#38e6ff'], HARD: ['HARD', '#ff6f8c'] };
   let rows = '';
   list.forEach((r, i) => {
     const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1);
+    const dv = DIFF_VIEW[r.diff];
+    const diffCell = dv ? '<span style="color:' + dv[1] + '">' + dv[0] + '</span>' : '—';
     rows += '<tr class="' + (r.name === highlightName ? 'me' : '') + '">' +
       '<td class="num">' + medal + '</td>' +
       '<td>' + escapeHtml(r.name) + '</td>' +
+      '<td class="md">' + diffCell + '</td>' +
       '<td class="rt">' + fmtTime(r.time) + '</td>' +
       '<td class="rt">' + String(r.score).padStart(6, '0') + '</td></tr>';
   });
   rankBody.innerHTML =
     '<table class="rank-table"><thead><tr>' +
-    '<th class="num">#</th><th>이름</th><th class="rt">TIME</th><th class="rt">SCORE</th>' +
+    '<th class="num">#</th><th>이름</th><th class="md">난이도</th><th class="rt">TIME</th><th class="rt">SCORE</th>' +
     '</tr></thead><tbody>' + rows + '</tbody></table>';
 }
 async function refreshRankTable(highlightName) {
@@ -761,7 +794,7 @@ async function commitScore(forcedName) {
 
   // 첫 등록이든 단축 성공이든 새 기록을 INSERT한다(anon 키는 서버 UPDATE 불가).
   // 같은 닉네임이 누적돼도 조회 시 dedupe로 최단 기록만 보인다.
-  const res = await insertRank({ name, time: game.clearTime, score: game.score });
+  const res = await insertRank({ name, time: game.clearTime, score: game.score, diff: DIFFS[game.diff].key });
   saveBtn.disabled = false;
   if (res.ok) {
     game.saved = true;
@@ -941,6 +974,15 @@ function loadStage(i) {
   game.king = null;
   game.shootCd = 0;
   const speed = def.speed * DIFFS[game.diff].mult;
+  const isHard = DIFFS[game.diff].key === 'HARD';
+  // 일반 빨간 졸병 한 마리 추가 (해당 칸에)
+  const pushNormal = (c, r) => game.enemies.push({
+    x: c * TILE + (TILE - EW) / 2, y: r * TILE, w: EW, h: EH,
+    vx: 0, vy: 0, dir: Math.random() < 0.5 ? -1 : 1,
+    grounded: false, dt: 0, state: 'walk', speed,
+    color: def.color, capT: 0, anim: Math.random() * 6, mad: false,
+    canDrop: i === 1, dropping: 0,   // stage 2 enemies dive down through platforms
+  });
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       const ch = def.map[r][c];
@@ -951,23 +993,22 @@ function loadStage(i) {
           inv: 1.0, anim: 0, startX: c * TILE + (TILE - PW) / 2, startY: r * TILE,
         };
       } else if (ch === 'e') {
-        game.enemies.push({
-          x: c * TILE + (TILE - EW) / 2, y: r * TILE, w: EW, h: EH,
-          vx: 0, vy: 0, dir: Math.random() < 0.5 ? -1 : 1,
-          grounded: false, dt: 0, state: 'walk', speed,
-          color: def.color, capT: 0, anim: Math.random() * 6, mad: false,
-          canDrop: i === 1, dropping: 0,   // stage 2 enemies dive down through platforms
-        });
+        pushNormal(c, r);
       } else if (ch === 'm') {
-        // 정예 적(미니보스급): 졸병보다 빠르고 위로 점프하며, 거품 2번 맞아야 잡힌다. 왕보다는 약하다.
-        game.enemies.push({
-          x: c * TILE + (TILE - 30) / 2, y: r * TILE, w: 30, h: 28,
-          vx: 0, vy: 0, dir: Math.random() < 0.5 ? -1 : 1,
-          grounded: false, dt: 0, state: 'walk', speed: speed * 1.45,
-          color: '#ff8a3a', capT: 0, anim: Math.random() * 6, mad: false,
-          canDrop: false, dropping: 0,
-          elite: true, hp: 2, hit: 0, jumpT: 0.8 + Math.random() * 1.0,
-        });
+        // 정예 적(날뛰는 쎈놈): 3라운드 HARD에서만 등장. 졸병보다 빠르고 위로 점프하며 거품 2번 맞아야 잡힌다.
+        // HARD가 아니면 그냥 일반 빨간 적으로 대체한다.
+        if (i === 2 && isHard) {
+          game.enemies.push({
+            x: c * TILE + (TILE - 30) / 2, y: r * TILE, w: 30, h: 28,
+            vx: 0, vy: 0, dir: Math.random() < 0.5 ? -1 : 1,
+            grounded: false, dt: 0, state: 'walk', speed: speed * 1.45,
+            color: '#ff8a3a', capT: 0, anim: Math.random() * 6, mad: false,
+            canDrop: false, dropping: 0,
+            elite: true, hp: 2, hit: 0, jumpT: 0.8 + Math.random() * 1.0,
+          });
+        } else {
+          pushNormal(c, r);
+        }
       } else if (ch === 'K') {
         game.king = {
           x: c * TILE + TILE / 2 - 28, y: r * TILE, baseY: r * TILE, w: 56, h: 50,
