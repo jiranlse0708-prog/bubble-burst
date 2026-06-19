@@ -256,12 +256,22 @@ const sfx = {
   die:   () => { beep(300, 0.25, 'sawtooth', 0.08, -200); setTimeout(() => beep(160, 0.35, 'sawtooth', 0.08, -100), 180); },
   clear: () => { [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, 0.14, 'square', 0.06), i * 110)); },
   start: () => { [392, 523, 659].forEach((f, i) => setTimeout(() => beep(f, 0.12, 'square', 0.06), i * 90)); },
-  // triumphant victory fanfare for clearing all stages
+  // 전체 클리어 승리 팡파르 — 신나고 통통 튀는 축하 멜로디
   win: () => {
-    const melody = [523, 659, 784, 1047, 784, 1047, 1319];
-    melody.forEach((f, i) => setTimeout(() => beep(f, 0.18, 'square', 0.07), i * 130));
-    melody.forEach((f, i) => setTimeout(() => beep(f / 2, 0.18, 'triangle', 0.05), i * 130));
-    setTimeout(() => beep(1568, 0.5, 'square', 0.07), melody.length * 130);
+    const C5 = 523, E5 = 659, G5 = 784, A5 = 880, C6 = 1047, E6 = 1319, G6 = 1568, C7 = 2093;
+    // 빠르고 경쾌한 메인 멜로디 [주파수, 시작(ms), 길이(s)]
+    const melody = [
+      [G5, 0, 0.11], [C6, 110, 0.11], [E6, 220, 0.11], [G6, 330, 0.24],
+      [E6, 540, 0.10], [G6, 650, 0.30],
+      [A5, 860, 0.11], [C6, 970, 0.11], [E6, 1080, 0.11], [A5, 1190, 0.24],
+      [G5, 1380, 0.11], [C6, 1490, 0.11], [E6, 1600, 0.11], [G6, 1710, 0.46],
+    ];
+    melody.forEach(([f, t, d]) => setTimeout(() => beep(f, d, 'square', 0.07), t));
+    // 통통 튀는 베이스 라인
+    [C5 / 2, G5 / 2, A5 / 2, G5 / 2].forEach((f, i) => setTimeout(() => beep(f, 0.2, 'triangle', 0.06), i * 430));
+    // 반짝이는 마무리 글리산도 + 큰 마침음
+    [G6, C6, E6, G6, C7].forEach((f, i) => setTimeout(() => beep(f, 0.12, 'square', 0.05), 2200 + i * 60));
+    setTimeout(() => beep(C7, 0.6, 'square', 0.07, 80), 2560);
   },
   firework: () => beep(180 + Math.random() * 120, 0.18, 'sawtooth', 0.05, 320),
   // klaxon-style alert when the boss appears
