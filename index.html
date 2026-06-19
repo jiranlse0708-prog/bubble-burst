@@ -621,6 +621,7 @@ const rankEntry = document.getElementById('rankEntry');
 const nameInput = document.getElementById('nameInput');
 const saveBtn   = document.getElementById('saveBtn');
 const rankMsg   = document.getElementById('rankMsg');
+const nameRow   = document.querySelector('#rankEntry .row');
 let rankOpen = false;
 let lastSavedName = null;   // 내 기록 하이라이트용
 
@@ -653,15 +654,30 @@ async function refreshRankTable(highlightName) {
   buildRankTable(list, highlightName);
 }
 
-function openRanking() {
-  const canRegister = (game.state === 'WIN' && !game.saved);   // 클리어 + 미등록일 때만 입력칸
-  rankEntry.classList.toggle('show', canRegister);
-  rankMsg.textContent = '';
-  if (canRegister) nameInput.value = '';
+async function openRanking() {
   rankModal.classList.add('show');
   rankOpen = true;
-  if (canRegister) setTimeout(() => { try { nameInput.focus(); } catch (_) {} }, 30);
-  refreshRankTable(lastSavedName);
+  rankEntry.classList.remove('show');
+  rankMsg.textContent = '';
+  rankBody.innerHTML = '<div class="rank-empty">불러오는 중…</div>';
+  const list = await fetchRanks();
+  buildRankTable(list, lastSavedName);
+
+  // 클리어 + 미등록일 때만 등록 가능. 단, 현재 10위 기록보다 빠를 때(=TOP 10 진입)만 입력칸 노출.
+  if (game.state === 'WIN' && !game.saved) {
+    const full = list && list.length >= RANK_MAX;
+    const eligible = !full || game.clearTime < list[list.length - 1].time;   // 읽기 실패 시엔 일단 등록 허용
+    rankEntry.classList.add('show');
+    if (eligible) {
+      nameRow.style.display = '';
+      nameInput.value = '';
+      rankMsg.textContent = '';
+      setTimeout(() => { try { nameInput.focus(); } catch (_) {} }, 30);
+    } else {
+      nameRow.style.display = 'none';   // 10위 안에 못 들면 입력칸 숨김
+      rankMsg.textContent = 'TOP 10 기록보다 느려서 등록은 안 돼요. 다음 기회에! 🙌';
+    }
+  }
 }
 function closeRanking() { rankModal.classList.remove('show'); rankOpen = false; }
 
