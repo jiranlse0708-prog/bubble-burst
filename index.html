@@ -480,7 +480,12 @@ const KEYMAP = {
   KeyM: 'mute',
 };
 addEventListener('keydown', (e) => {
-  if (e.target && e.target.tagName === 'INPUT') return;   // 닉네임 입력 중엔 게임 키 무시
+  if (e.target && e.target.tagName === 'INPUT') return;   // 닉네임 입력 중엔 게임 키 무시(Enter는 입력칸이 commit)
+  // 랭킹 팝업이 열려 있으면 Enter로 닫는다(게임 진행 키는 차단).
+  if (rankOpen) {
+    if (e.code === 'Enter' || e.code === 'NumpadEnter') { e.preventDefault(); closeRanking(); }
+    return;
+  }
   const a = KEYMAP[e.code];
   if (a) { e.preventDefault(); audio(); if (!keys[a]) pressed[a] = true; keys[a] = true; }
 });
@@ -608,13 +613,23 @@ const SUPA_HEADERS = { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY };
 
 async function fetchRanks() {
   try {
+    // anon 키로는 UPDATE가 막혀 있어 기록 갱신은 '새 기록 INSERT'로 처리한다.
+    // 그래서 같은 닉네임이 여러 행일 수 있어, 넉넉히 받아 가장 빠른 행만 남긴다(time asc 정렬이라 첫 등장이 최고).
     const res = await fetch(
-      SUPA_URL + '/rest/v1/' + RANK_TABLE + '?select=name,time_sec,score&order=time_sec.asc&limit=' + RANK_MAX,
+      SUPA_URL + '/rest/v1/' + RANK_TABLE + '?select=name,time_sec,score&order=time_sec.asc&limit=200',
       { headers: SUPA_HEADERS }
     );
     if (!res.ok) return null;
     const rows = await res.json();
-    return rows.map((r) => ({ name: r.name, time: r.time_sec, score: r.score }));
+    const seen = new Set();
+    const best = [];
+    for (const r of rows) {
+      if (seen.has(r.name)) continue;       // 같은 닉네임은 최고(최단) 기록만
+      seen.add(r.name);
+      best.push({ name: r.name, time: r.time_sec, score: r.score });
+      if (best.length >= RANK_MAX) break;   // TOP 10만
+    }
+    return best;
   } catch (_) { return null; }
 }
 async function insertRank(rec) {
@@ -624,17 +639,6 @@ async function insertRank(rec) {
       method: 'POST',
       headers: Object.assign({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }, SUPA_HEADERS),
       body: JSON.stringify({ name: rec.name, time_sec: rec.time, score: rec.score }),
-    });
-    return { ok: res.ok, status: res.status };
-  } catch (_) { return { ok: false, status: 0 }; }
-}
-// 같은 닉네임의 기존 기록을 갱신(PATCH). 재방문자가 다시 랭킹에 들면 새 행을 만들지 않고 이 행만 업데이트한다.
-async function updateRank(rec) {
-  try {
-    const res = await fetch(SUPA_URL + '/rest/v1/' + RANK_TABLE + '?name=eq.' + encodeURIComponent(rec.name), {
-      method: 'PATCH',
-      headers: Object.assign({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }, SUPA_HEADERS),
-      body: JSON.stringify({ time_sec: rec.time, score: rec.score }),
     });
     return { ok: res.ok, status: res.status };
   } catch (_) { return { ok: false, status: 0 }; }
@@ -743,24 +747,21 @@ async function commitScore(forcedName) {
     return;
   }
 
-  let res;
-  if (mine) {
-    // 내 기존 기록이 있다 → 더 빠를 때만 갱신, 아니면 베스트 유지
-    if (game.clearTime >= mine.time) {
-      game.saved = true;
-      lastSavedName = name;
-      localStorage.setItem('bb_lastname', name);
-      rankEntry.classList.remove('show');
-      rankMsg.textContent = '기존 기록이 더 빨라요 (' + fmtTime(mine.time) + ')';
-      saveBtn.disabled = false;
-      await refreshRankTable(name);
-      return;
-    }
-    res = await updateRank({ name, time: game.clearTime, score: game.score });
-  } else {
-    res = await insertRank({ name, time: game.clearTime, score: game.score });
+  // 내 기존 기록이 있는데 이번이 더 느리면 베스트 유지(갱신 안 함)
+  if (mine && game.clearTime >= mine.time) {
+    game.saved = true;
+    lastSavedName = name;
+    localStorage.setItem('bb_lastname', name);
+    rankEntry.classList.remove('show');
+    rankMsg.textContent = '기존 기록이 더 빨라요 (' + fmtTime(mine.time) + ')';
+    saveBtn.disabled = false;
+    await refreshRankTable(name);
+    return;
   }
 
+  // 첫 등록이든 단축 성공이든 새 기록을 INSERT한다(anon 키는 서버 UPDATE 불가).
+  // 같은 닉네임이 누적돼도 조회 시 dedupe로 최단 기록만 보인다.
+  const res = await insertRank({ name, time: game.clearTime, score: game.score });
   saveBtn.disabled = false;
   if (res.ok) {
     game.saved = true;
