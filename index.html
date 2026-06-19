@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>BUBBLE BURST</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -12,6 +12,8 @@
     margin: 0; padding: 0; height: 100%;
     background: #05060f;
     overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: none;
     font-family: 'Press Start 2P', monospace;
   }
   #wrap {
@@ -57,6 +59,21 @@
   .tc-btn.active { background: rgba(120,225,255,0.5); transform: scale(0.93); }
   .tc-shoot { border-color: rgba(255,95,176,0.85); color: #ffd0e8; }
   .tc-jump  { border-color: rgba(95,230,160,0.9); color: #d6ffe8; }
+  /* "rotate your device" overlay — only on touch devices held in portrait */
+  #rotate { display: none; }
+  .rot-emoji { font-size: 66px; animation: rothint 1.8s ease-in-out infinite; }
+  @keyframes rothint { 0%,40% { transform: rotate(0deg); } 65%,100% { transform: rotate(-90deg); } }
+  .rot-text { font-size: 13px; line-height: 1.9; color: #cdefff; }
+  .rot-text span { display: block; margin-top: 10px; font-size: 9px; color: #9aa3d0; }
+  @media (orientation: portrait) {
+    body.touch #rotate {
+      display: flex; position: fixed; inset: 0; z-index: 50;
+      flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+      background: radial-gradient(circle at 50% 45%, #131634 0%, #05060f 75%);
+      text-align: center; font-family: 'Press Start 2P', monospace;
+    }
+    body.touch #touch-controls { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -70,6 +87,10 @@
     <button class="tc-btn tc-shoot" data-act="shoot" aria-label="shoot">&#9679;</button>
     <button class="tc-btn tc-jump" data-act="jump" aria-label="jump">&#9650;</button>
   </div>
+</div>
+<div id="rotate">
+  <div class="rot-emoji">&#128241;</div>
+  <div class="rot-text">가로로 돌려주세요<span>ROTATE YOUR DEVICE</span></div>
 </div>
 <script>
 "use strict";
@@ -350,12 +371,13 @@ function setupTouch() {
   if (!isTouch) return;
   document.body.classList.add('touch');
 
+  const buzz = (ms) => { if (navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) {} } };
   const press = (a) => { audio(); if (!keys[a]) pressed[a] = true; keys[a] = true; };
   const release = (a) => { keys[a] = false; };
 
   document.querySelectorAll('.tc-btn').forEach((btn) => {
     const act = btn.dataset.act;
-    const down = (e) => { e.preventDefault(); press(act); btn.classList.add('active'); };
+    const down = (e) => { e.preventDefault(); press(act); buzz(act === 'jump' || act === 'shoot' ? 8 : 5); btn.classList.add('active'); };
     const up = (e) => { e.preventDefault(); release(act); btn.classList.remove('active'); };
     btn.addEventListener('pointerdown', down);
     btn.addEventListener('pointerup', up);
@@ -364,9 +386,12 @@ function setupTouch() {
     btn.addEventListener('contextmenu', (e) => e.preventDefault());
   });
 
-  // tap the playfield to start / continue from any non-playing screen
+  // playfield tap: start/continue on menus, or FIRE during play (so you can
+  // hold jump with one thumb and tap the screen to shoot at the same time).
   canvas.addEventListener('pointerdown', (e) => {
-    if (game.state !== 'PLAYING') { e.preventDefault(); audio(); pressed.enter = true; }
+    e.preventDefault(); audio();
+    if (game.state === 'PLAYING') { pressed.shoot = true; buzz(8); }
+    else { pressed.enter = true; buzz(12); }
   });
 }
 setupTouch();
@@ -1310,12 +1335,14 @@ function drawTitle() {
 /* =========================================================================
    MAIN LOOP
    ========================================================================= */
+const portraitMQ = window.matchMedia('(orientation: portrait)');
+const blockedPortrait = () => document.body.classList.contains('touch') && portraitMQ.matches;
 let last = performance.now();
 function frame(now) {
   let dt = (now - last) / 1000;
   last = now;
   if (dt > 0.05) dt = 0.05;  // clamp (tab switches etc.)
-  update(dt);
+  if (!blockedPortrait()) update(dt);   // freeze while the rotate overlay is up
   render();
   requestAnimationFrame(frame);
 }
