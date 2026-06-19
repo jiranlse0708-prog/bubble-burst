@@ -29,10 +29,48 @@
     border-radius: 4px;
     touch-action: none;
   }
+  /* on-screen touch controls — shown only on touch devices */
+  #touch-controls { display: none; }
+  body.touch #touch-controls {
+    display: flex;
+    position: fixed; left: 0; right: 0; bottom: 0;
+    justify-content: space-between; align-items: flex-end;
+    padding: 0 16px calc(16px + env(safe-area-inset-bottom)) 16px;
+    box-sizing: border-box;
+    z-index: 10; pointer-events: none;
+  }
+  .tc-group { display: flex; gap: 16px; pointer-events: none; }
+  .tc-btn {
+    pointer-events: auto;
+    width: 70px; height: 70px;
+    border-radius: 50%;
+    border: 3px solid rgba(120,225,255,0.7);
+    background: rgba(20,28,60,0.40);
+    color: #cdefff;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 22px; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.45);
+  }
+  .tc-btn.active { background: rgba(120,225,255,0.5); transform: scale(0.93); }
+  .tc-shoot { border-color: rgba(255,95,176,0.85); color: #ffd0e8; }
+  .tc-jump  { border-color: rgba(95,230,160,0.9); color: #d6ffe8; }
 </style>
 </head>
 <body>
 <div id="wrap"><canvas id="game" width="640" height="480"></canvas></div>
+<div id="touch-controls">
+  <div class="tc-group tc-left">
+    <button class="tc-btn" data-act="left" aria-label="left">&#9664;</button>
+    <button class="tc-btn" data-act="right" aria-label="right">&#9654;</button>
+  </div>
+  <div class="tc-group tc-right">
+    <button class="tc-btn tc-shoot" data-act="shoot" aria-label="shoot">&#9679;</button>
+    <button class="tc-btn tc-jump" data-act="jump" aria-label="jump">&#9650;</button>
+  </div>
+</div>
 <script>
 "use strict";
 /* =========================================================================
@@ -301,31 +339,35 @@ addEventListener('keyup', (e) => {
   if (a) { e.preventDefault(); keys[a] = false; }
 });
 
-/* --- touch controls (mobile): tap zones --- */
-const touch = { left: false, right: false };
+/* --- touch controls (mobile): visible on-screen buttons + tap-to-start ---
+   On touch devices we reveal the #touch-controls overlay: a left/right pad
+   plus jump and shoot buttons. Movement keys are held while pressed; jump and
+   shoot fire on press (edge-triggered, same as the keyboard). Menus advance by
+   tapping the playfield. Non-touch devices keep keyboard-only and hide the UI. */
 function setupTouch() {
+  const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) ||
+                  (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+  if (!isTouch) return;
+  document.body.classList.add('touch');
+
   const press = (a) => { audio(); if (!keys[a]) pressed[a] = true; keys[a] = true; };
   const release = (a) => { keys[a] = false; };
-  canvas.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    for (const t of e.changedTouches) {
-      const r = canvas.getBoundingClientRect();
-      const x = (t.clientX - r.left) / r.width;
-      const y = (t.clientY - r.top) / r.height;
-      if (game.state !== 'PLAYING') { press('enter'); return; }
-      if (y < 0.45) press('jump');
-      else if (x < 0.33) { press('left'); touch.left = true; }
-      else if (x > 0.66) { press('right'); touch.right = true; }
-      else press('shoot');
-    }
-  }, { passive: false });
-  const end = (e) => {
-    e.preventDefault();
-    keys.left = keys.right = keys.jump = keys.shoot = false;
-    touch.left = touch.right = false;
-  };
-  canvas.addEventListener('touchend', end, { passive: false });
-  canvas.addEventListener('touchcancel', end, { passive: false });
+
+  document.querySelectorAll('.tc-btn').forEach((btn) => {
+    const act = btn.dataset.act;
+    const down = (e) => { e.preventDefault(); press(act); btn.classList.add('active'); };
+    const up = (e) => { e.preventDefault(); release(act); btn.classList.remove('active'); };
+    btn.addEventListener('pointerdown', down);
+    btn.addEventListener('pointerup', up);
+    btn.addEventListener('pointercancel', up);
+    btn.addEventListener('pointerleave', up);
+    btn.addEventListener('contextmenu', (e) => e.preventDefault());
+  });
+
+  // tap the playfield to start / continue from any non-playing screen
+  canvas.addEventListener('pointerdown', (e) => {
+    if (game.state !== 'PLAYING') { e.preventDefault(); audio(); pressed.enter = true; }
+  });
 }
 setupTouch();
 
