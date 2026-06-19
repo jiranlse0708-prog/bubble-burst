@@ -194,6 +194,14 @@ const sfx = {
   die:   () => { beep(300, 0.25, 'sawtooth', 0.08, -200); setTimeout(() => beep(160, 0.35, 'sawtooth', 0.08, -100), 180); },
   clear: () => { [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, 0.14, 'square', 0.06), i * 110)); },
   start: () => { [392, 523, 659].forEach((f, i) => setTimeout(() => beep(f, 0.12, 'square', 0.06), i * 90)); },
+  // triumphant victory fanfare for clearing all stages
+  win: () => {
+    const melody = [523, 659, 784, 1047, 784, 1047, 1319];
+    melody.forEach((f, i) => setTimeout(() => beep(f, 0.18, 'square', 0.07), i * 130));
+    melody.forEach((f, i) => setTimeout(() => beep(f / 2, 0.18, 'triangle', 0.05), i * 130));
+    setTimeout(() => beep(1568, 0.5, 'square', 0.07), melody.length * 130);
+  },
+  firework: () => beep(180 + Math.random() * 120, 0.18, 'sawtooth', 0.05, 320),
 };
 
 /* =========================================================================
@@ -267,6 +275,8 @@ const game = {
   overlayT: 0,     // timer for stage clear / messages
   shootCd: 0,
   shake: 0,
+  newRecord: false, // set true on WIN when the score beats the old high
+  winSpark: 0,      // confetti/firework spawn timer during WIN
 };
 
 /* --- tile helpers --- */
@@ -397,10 +407,13 @@ function instantDeath() {
 
 function nextStage() {
   if (game.stage >= STAGES.length - 1) {
-    if (game.score > game.high) { game.high = game.score; localStorage.setItem('bb_high', game.high); }
+    game.newRecord = game.score > game.high;
+    if (game.newRecord) { game.high = game.score; localStorage.setItem('bb_high', game.high); }
     game.state = 'WIN';
     game.overlayT = 0;
-    sfx.clear();
+    game.winSpark = 0;
+    game.particles = [];
+    sfx.win();
   } else {
     game.stage++;
     loadStage(game.stage);
@@ -431,6 +444,29 @@ function addScore(n, x, y) {
   game.particles.push({ x, y, text: '+' + n, vy: -50, life: 0.9, color: COL.yellow, r: 0 });
 }
 
+/* --- WIN celebration FX: drifting confetti + bursting fireworks --- */
+const PARTY = ['#ff5fb0', '#38e6ff', '#ffe24d', '#5fe6a0', '#b06bff', '#ff8a3a', '#ffffff'];
+function updateWinFx(dt) {
+  game.winSpark -= dt;
+  // steady stream of confetti falling from the top
+  for (let i = 0; i < 3; i++) {
+    game.particles.push({
+      x: Math.random() * W, y: -8,
+      vx: (Math.random() - 0.5) * 80, vy: 40 + Math.random() * 90,
+      life: 2.2 + Math.random() * 1.6, color: PARTY[(Math.random() * PARTY.length) | 0],
+      r: 2 + Math.random() * 2.5,
+    });
+  }
+  // periodic firework bursts
+  if (game.winSpark <= 0) {
+    game.winSpark = 0.45 + Math.random() * 0.35;
+    const fx = 60 + Math.random() * (W - 120);
+    const fy = 70 + Math.random() * 180;
+    burst(fx, fy, PARTY[(Math.random() * PARTY.length) | 0], 22);
+    sfx.firework();
+  }
+}
+
 /* =========================================================================
    UPDATE
    ========================================================================= */
@@ -447,7 +483,11 @@ function update(dt) {
   } else if (game.state === 'STAGECLEAR') {
     game.overlayT += dt;
     if (game.overlayT > 1.8 || pressed.enter) nextStage();
-  } else if (game.state === 'GAMEOVER' || game.state === 'WIN') {
+  } else if (game.state === 'WIN') {
+    game.overlayT += dt;
+    updateWinFx(dt);
+    if (game.overlayT > 0.6 && pressed.enter) { game.state = 'TITLE'; }
+  } else if (game.state === 'GAMEOVER') {
     game.overlayT += dt;
     if (game.overlayT > 0.6 && pressed.enter) { game.state = 'TITLE'; }
   }
@@ -986,7 +1026,7 @@ function render() {
 
   if (game.state === 'STAGECLEAR') overlayBox('STAGE CLEAR!', STAGES[game.stage].name, COL.cyan);
   if (game.state === 'GAMEOVER') overlayBox('GAME OVER', 'PRESS ENTER', COL.pink);
-  if (game.state === 'WIN') overlayBox('YOU WIN!', 'SCORE ' + game.score, COL.yellow);
+  if (game.state === 'WIN') drawWin();
 
   ctx.restore();
 }
@@ -997,6 +1037,98 @@ function overlayBox(title, sub, color) {
   const blink = game.state === 'STAGECLEAR' || Math.floor(game.t * 2) % 2 === 0 || game.state === 'WIN';
   text(title, W / 2, H / 2 - 6, 26, color, 'center');
   if (blink) text(sub, W / 2, H / 2 + 30, 10, COL.ink, 'center');
+}
+
+/* a golden victory trophy */
+function drawTrophy(cx, cy, s, shine) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(s, s);
+  const gold = ctx.createLinearGradient(0, -22, 0, 18);
+  gold.addColorStop(0, '#fff3b0'); gold.addColorStop(0.45, '#ffd23a'); gold.addColorStop(1, '#c8881a');
+  // side handles
+  ctx.strokeStyle = '#ffd23a'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(-13, -10, 7, Math.PI * 0.5, Math.PI * 1.5, true); ctx.stroke();
+  ctx.beginPath(); ctx.arc(13, -10, 7, Math.PI * 0.5, Math.PI * 1.5); ctx.stroke();
+  // cup
+  ctx.fillStyle = gold;
+  ctx.beginPath();
+  ctx.moveTo(-13, -20); ctx.lineTo(13, -20);
+  ctx.lineTo(10, -4); ctx.quadraticCurveTo(0, 8, -10, -4);
+  ctx.closePath(); ctx.fill();
+  // stem + base
+  ctx.fillStyle = '#e0a92a';
+  ctx.fillRect(-2.5, 4, 5, 7);
+  ctx.fillRect(-9, 11, 18, 4);
+  ctx.fillRect(-12, 15, 24, 4);
+  // shine sweep
+  ctx.fillStyle = 'rgba(255,255,255,' + (0.25 + 0.25 * Math.sin(shine * 4)) + ')';
+  ctx.beginPath(); ctx.moveTo(-7, -18); ctx.lineTo(-3, -18); ctx.lineTo(-6, -6); ctx.lineTo(-10, -6); ctx.closePath(); ctx.fill();
+  // star on the cup
+  ctx.fillStyle = '#ff6a00';
+  ctx.save(); ctx.translate(0, -11); ctx.rotate(shine * 0.6);
+  ctx.beginPath();
+  for (let i = 0; i < 5; i++) {
+    const a = -Math.PI / 2 + i * (Math.PI * 2 / 5);
+    const a2 = a + Math.PI / 5;
+    ctx.lineTo(Math.cos(a) * 5, Math.sin(a) * 5);
+    ctx.lineTo(Math.cos(a2) * 2.2, Math.sin(a2) * 2.2);
+  }
+  ctx.closePath(); ctx.fill(); ctx.restore();
+  ctx.restore();
+}
+
+/* the big ALL CLEAR celebration screen */
+function drawWin() {
+  const t = game.t, ot = game.overlayT;
+  // soft dim so confetti/fireworks behind still read
+  ctx.fillStyle = 'rgba(5,6,15,0.55)';
+  ctx.fillRect(0, 0, W, H);
+
+  // rainbow ALL CLEAR banner (each letter cycles hue)
+  const title = 'ALL CLEAR!';
+  ctx.font = "34px 'Press Start 2P', monospace";
+  ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  const lw = ctx.measureText(title).width;
+  let lx = W / 2 - lw / 2;
+  for (let i = 0; i < title.length; i++) {
+    const ch = title[i];
+    const cw = ctx.measureText(ch).width;
+    const hue = (t * 120 + i * 32) % 360;
+    const yo = Math.sin(t * 4 + i * 0.6) * 5;     // wavy bounce
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillText(ch, lx + cw / 2 + 2, 130 + yo + 2);
+    ctx.fillStyle = 'hsl(' + hue + ',90%,65%)';
+    ctx.fillText(ch, lx + cw / 2, 130 + yo);
+    lx += cw;
+  }
+
+  text('STAGE 3 COMPLETE', W / 2, 168, 11, COL.cyan, 'center');
+
+  // trophy with celebrating dino on each side
+  const pop = Math.min(1, ot * 2);              // little entrance pop
+  drawTrophy(W / 2, 230, 2.4 * pop, t);
+
+  const jump = Math.abs(Math.sin(t * 6)) * 8;
+  const dinoL = { x: W / 2 - 110, y: 250 - jump, w: 34, h: 38, vx: 1, anim: t };
+  const dinoR = { x: W / 2 + 76, y: 250 - jump, w: 34, h: 38, vx: 1, anim: t + 1 };
+  drawCreature(dinoL, COL.green, 1);
+  drawCreature(dinoR, COL.green, -1);
+
+  // final score panel
+  text('FINAL SCORE', W / 2, 318, 10, COL.pink, 'center');
+  text(String(game.score).padStart(7, '0'), W / 2, 348, 20, COL.yellow, 'center');
+
+  // NEW RECORD! flashes if the high score was beaten
+  if (game.newRecord && Math.floor(t * 4) % 2 === 0) {
+    text('★ NEW RECORD! ★', W / 2, 384, 12, COL.cyan, 'center');
+  } else if (!game.newRecord) {
+    text('HIGH ' + String(game.high).padStart(7, '0'), W / 2, 382, 9, '#9aa3d0', 'center');
+  }
+
+  // thank-you + prompt
+  text('THANK YOU FOR PLAYING!', W / 2, 424, 9, COL.green, 'center');
+  if (Math.floor(t * 1.6) % 2 === 0) text('PRESS ENTER', W / 2, 456, 11, COL.ink, 'center');
 }
 
 function drawTitle() {
