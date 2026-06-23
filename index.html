@@ -1045,7 +1045,7 @@ function loadStage(i) {
         game.king = {
           x: c * TILE + TILE / 2 - 28, y: r * TILE, baseY: r * TILE, w: 56, h: 50,
           vx: 70 * DIFFS[game.diff].mult, vy: 0, dir: 1, dt: 0, anim: 0,
-          state: 'walk', capT: 0, hp: 5, maxHp: 5, shootT: 1.6, color: '#ff2f6b', hit: 0,
+          state: 'walk', capT: 0, hp: 5, maxHp: 5, shootT: 1.6, color: '#ff2f6b', hit: 0, armed: false,
         };
       }
     }
@@ -1323,9 +1323,9 @@ function updatePlaying(dt) {
       k.dir = k.vx > 0 ? 1 : -1;
       k.y = k.baseY + Math.sin(k.anim * 1.5) * 16;
       k.shootT -= dt;
-      // 플레이어가 밑에서 3번째 계단(grid row 7) 이상에 있을 때만 왕이 총알을 쏜다. 1·2번째 계단·바닥에선 안 쏨.
-      const onHighGround = (p.y + p.h) <= 7 * TILE + 4;
-      if (onHighGround && k.shootT <= 0) {
+      // 플레이어가 밑에서 3번째 계단(grid row 7)에 한 번 오르면, 이후 다시 내려가도 왕은 계속 총알을 쏜다.
+      if (!k.armed && (p.y + p.h) <= 7 * TILE + 4) k.armed = true;
+      if (k.armed && k.shootT <= 0) {
         k.shootT = 1.5 / DIFFS[game.diff].mult;
         const sx = k.x + k.w / 2, sy = k.y + k.h / 2;
         const ang = Math.atan2((p.y + p.h / 2) - sy, (p.x + p.w / 2) - sx);
