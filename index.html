@@ -1327,7 +1327,9 @@ function updatePlaying(dt) {
         k.shootT = 1.5 / DIFFS[game.diff].mult;
         const sx = k.x + k.w / 2, sy = k.y + k.h / 2;
         const ang = Math.atan2((p.y + p.h / 2) - sy, (p.x + p.w / 2) - sx);
-        const sp = 210 * DIFFS[game.diff].mult;
+        // 플레이어가 밑에서 3번째 계단(grid row 7)보다 낮으면(1·2번째 계단·바닥) 총알이 더 천천히 날아온다
+        const onHighGround = (p.y + p.h) <= 7 * TILE + 4;
+        const sp = 210 * DIFFS[game.diff].mult * (onHighGround ? 1 : 0.55);
         game.shots.push({ x: sx - 7, y: sy - 7, w: 14, h: 14, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, life: 4, anim: 0 });
         sfx.shoot();
       }
