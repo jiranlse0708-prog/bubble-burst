@@ -633,12 +633,25 @@ const SUPA_HEADERS = { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY };
 let diffColExists = null;
 const colMissing = (t) => t.includes('diff') && t.includes('does not exist');
 
+// 랭킹 정렬 기준: 3단계까지 클리어한 기록이 항상 위(클리어끼리는 빠른 시간순),
+// 클리어 못 한 기록은 그 아래에서 점수 높은 순. (time_sec===0 이면 미클리어로 간주)
+function rankCmp(a, b) {
+  if (a.cleared !== b.cleared) return a.cleared ? -1 : 1;   // 클리어가 미클리어보다 위
+  if (a.cleared) return a.time - b.time;                    // 클리어: 빠를수록 위
+  return b.score - a.score;                                 // 미클리어: 점수 높을수록 위
+}
+// 이번 판의 랭킹 기록. WIN이면 클리어(시간 기록), 아니면(GAMEOVER) 미클리어(점수 기록, time 0).
+function currentRecord() {
+  const cleared = game.state === 'WIN';
+  return { cleared, time: cleared ? game.clearTime : 0, score: game.score, diff: DIFFS[game.diff].key };
+}
+
 async function fetchRanks() {
   try {
-    // anon 키로는 UPDATE가 막혀 있어 기록 갱신은 '새 기록 INSERT'로 처리한다.
-    // 그래서 같은 닉네임이 여러 행일 수 있어, 넉넉히 받아 가장 빠른 행만 남긴다(time asc 정렬이라 첫 등장이 최고).
+    // anon 키로는 UPDATE가 막혀 있어 기록 갱신은 '새 기록 INSERT'로 처리한다(같은 닉네임 여러 행 가능).
+    // 2단계 정렬(클리어 우선/미클리어는 점수순)은 서버 정렬로 안 되므로, 넉넉히 받아 클라에서 정렬한다.
     const url = (withDiff) => SUPA_URL + '/rest/v1/' + RANK_TABLE +
-      '?select=name,time_sec,score' + (withDiff ? ',diff' : '') + '&order=time_sec.asc&limit=200';
+      '?select=name,time_sec,score' + (withDiff ? ',diff' : '') + '&limit=1000';
     const useDiff = diffColExists !== false;
     let res = await fetch(url(useDiff), { headers: SUPA_HEADERS });
     if (!res.ok) {
@@ -652,15 +665,14 @@ async function fetchRanks() {
       diffColExists = true;
     }
     const rows = await res.json();
-    const seen = new Set();
-    const best = [];
-    for (const r of rows) {
-      if (seen.has(r.name)) continue;       // 같은 닉네임은 최고(최단) 기록만
-      seen.add(r.name);
-      best.push({ name: r.name, time: r.time_sec, score: r.score, diff: r.diff || null });
-      if (best.length >= RANK_MAX) break;   // TOP 10만
+    // 닉네임별 최고 기록만 남긴다(rankCmp 기준: 클리어 우선 → 클리어끼리 최단 → 미클리어끼리 최고점).
+    const bestByName = new Map();
+    for (const raw of rows) {
+      const rec = { name: raw.name, time: raw.time_sec, score: raw.score, diff: raw.diff || null, cleared: raw.time_sec > 0 };
+      const cur = bestByName.get(rec.name);
+      if (!cur || rankCmp(rec, cur) < 0) bestByName.set(rec.name, rec);
     }
-    return best;
+    return [...bestByName.values()].sort(rankCmp).slice(0, RANK_MAX);   // TOP 10
   } catch (_) { return null; }
 }
 async function insertRank(rec) {
@@ -717,7 +729,7 @@ function buildRankTable(list, highlightName) {
       '<td class="num">' + medal + '</td>' +
       '<td>' + escapeHtml(r.name) + '</td>' +
       '<td class="md">' + diffCell + '</td>' +
-      '<td class="rt">' + fmtTime(r.time) + '</td>' +
+      '<td class="rt">' + (r.cleared ? fmtTime(r.time) : '<span style="color:#5b6498">—</span>') + '</td>' +
       '<td class="rt">' + String(r.score).padStart(6, '0') + '</td></tr>';
   });
   rankBody.innerHTML =
@@ -731,15 +743,14 @@ async function refreshRankTable(highlightName) {
   buildRankTable(list, highlightName);
 }
 
-// 클리어 후 랭킹창을 자동으로 띄울지 판단. "10위 안에 들면 항상" 띄운다:
-//  - 자리가 남았거나(아직 10명 미만), 이번 기록이 현재 10위보다 빠르면 새로 진입,
-//  - 저장된 내 닉네임이 이미 TOP 10에 있으면(이번에 단축 못 했어도) 여전히 10위 안.
+// "10위 안에 들면 항상" 랭킹창을 띄운다. 자격 판정도 2단계 정렬(rankCmp) 기준:
+//  - 자리가 남았거나(10명 미만), 이번 기록이 현재 10위보다 위면 진입,
+//  - 저장된 내 닉네임이 이미 TOP 10에 있으면(이번에 못 넘겨도) 여전히 10위 안.
 function rankEligible(list) {
   if (!list) return true;   // 읽기 실패 시엔 일단 허용
-  const full = list.length >= RANK_MAX;
-  const enters = !full || game.clearTime < list[list.length - 1].time;
-  const alreadyIn = lastSavedName && list.some((r) => r.name === lastSavedName);
-  return enters || alreadyIn;
+  if (lastSavedName && list.some((r) => r.name === lastSavedName)) return true;
+  if (list.length < RANK_MAX) return true;
+  return rankCmp(currentRecord(), list[list.length - 1]) < 0;
 }
 
 async function openRanking() {
@@ -751,8 +762,8 @@ async function openRanking() {
   const list = await fetchRanks();
   buildRankTable(list, lastSavedName);
 
-  // 클리어 + 미등록 + 자격 충족일 때만 등록/갱신 흐름 진입. 못 들면 순위만 보여준다.
-  if (game.state === 'WIN' && !game.saved && rankEligible(list)) {
+  // 클리어(WIN) 또는 게임오버(GAMEOVER) + 미등록 + 자격 충족일 때만 등록/갱신. 못 들면 순위만 보여준다.
+  if ((game.state === 'WIN' || game.state === 'GAMEOVER') && !game.saved && rankEligible(list)) {
     if (lastSavedName) {
       // 재방문자: 닉네임을 다시 짓지 않고 기존 기록을 그대로 갱신한다(입력칸 없이 자동).
       commitScore(lastSavedName);
@@ -767,15 +778,16 @@ async function openRanking() {
 }
 function closeRanking() { rankModal.classList.remove('show'); rankOpen = false; }
 
-// WIN 직후 자동 호출. TOP 10 자격이 될 때만 랭킹 모달(닉네임 입력칸)을 자동으로 띄운다.
-// 자격이 안 되면 아무것도 띄우지 않아, 클리어 연출을 가리지 않는다.
-let autoRankTried = false;   // 이번 WIN에서 자동 시도했는지 (중복 방지)
+// WIN/GAMEOVER 직후 자동 호출. TOP 10 자격이 될 때만 랭킹 모달을 자동으로 띄운다.
+// 자격이 안 되면 아무것도 띄우지 않아, 종료 연출을 가리지 않는다.
+let autoRankTried = false;   // 이번 판에서 자동 시도했는지 (중복 방지)
+function endState() { return game.state === 'WIN' || game.state === 'GAMEOVER'; }
 async function autoPromptRank() {
-  if (game.state !== 'WIN' || game.saved || rankOpen) return;
+  if (!endState() || game.saved || rankOpen) return;
   const list = await fetchRanks();
   if (!rankEligible(list)) return;
   // await 사이에 상태가 바뀌었을 수 있으니 다시 확인
-  if (game.state === 'WIN' && !game.saved && !rankOpen) openRanking();
+  if (endState() && !game.saved && !rankOpen) openRanking();
 }
 
 // forcedName이 주어지면(재방문자 자동 갱신) 입력칸 대신 그 닉네임을 쓴다.
@@ -795,21 +807,24 @@ async function commitScore(forcedName) {
     return;
   }
 
-  // 내 기존 기록이 있는데 이번이 더 느리면 베스트 유지(갱신 안 함)
-  if (mine && game.clearTime >= mine.time) {
+  const me = currentRecord();
+  // 내 기존 기록이 있는데 이번이 더 낫지 않으면 베스트 유지(갱신 안 함)
+  if (mine && rankCmp(me, mine) >= 0) {
     game.saved = true;
     lastSavedName = name;
     localStorage.setItem('bb_lastname', name);
     rankEntry.classList.remove('show');
-    rankMsg.textContent = '기존 기록이 더 빨라요 (' + fmtTime(mine.time) + ')';
+    rankMsg.textContent = mine.cleared
+      ? '기존 클리어 기록이 더 좋아요 (' + fmtTime(mine.time) + ')'
+      : '기존 점수가 더 높아요 (' + String(mine.score).padStart(6, '0') + ')';
     saveBtn.disabled = false;
     await refreshRankTable(name);
     return;
   }
 
-  // 첫 등록이든 단축 성공이든 새 기록을 INSERT한다(anon 키는 서버 UPDATE 불가).
-  // 같은 닉네임이 누적돼도 조회 시 dedupe로 최단 기록만 보인다.
-  const res = await insertRank({ name, time: game.clearTime, score: game.score, diff: DIFFS[game.diff].key });
+  // 첫 등록이든 기록 향상이든 새 기록을 INSERT한다(anon 키는 서버 UPDATE 불가).
+  // 미클리어는 time 0으로 저장 → 조회 시 클리어 기록 아래·점수순으로 정렬된다.
+  const res = await insertRank({ name, time: me.time, score: me.score, diff: me.diff });
   saveBtn.disabled = false;
   if (res.ok) {
     game.saved = true;
@@ -844,8 +859,10 @@ function updateShareButton() {
   if (game.state !== prevShareState) {
     if (showing) {
       shareLbl.textContent = 'SHARE GAME'; endBtns.classList.add('show');
-      // WIN 진입 시: 클리어 연출을 잠깐 보여준 뒤 자동으로 닉네임 입력을 유도
-      if (game.state === 'WIN' && !autoRankTried) { autoRankTried = true; setTimeout(autoPromptRank, 1400); }
+      // WIN/GAMEOVER 진입 시: 종료 연출을 잠깐 보여준 뒤 자동으로 랭킹 등록을 유도
+      if ((game.state === 'WIN' || game.state === 'GAMEOVER') && !autoRankTried) {
+        autoRankTried = true; setTimeout(autoPromptRank, game.state === 'WIN' ? 1400 : 900);
+      }
     }
     else { endBtns.classList.remove('show'); if (rankOpen) closeRanking(); }
     prevShareState = game.state;
